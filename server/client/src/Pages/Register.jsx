@@ -29,7 +29,7 @@ const Register = () => {
   return (
     <div className="auth-container">
       <div className="auth-box">
-        <h2>🛵 SchoolDeliver</h2>
+        <h2> ZutDeliver</h2>
         <p>Create your account</p>
         {error && <div className="error-msg">{error}</div>}
         <div className="form-group">

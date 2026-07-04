@@ -9,7 +9,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: 'http://localhost:5173',
+    origin: '*',
     methods: ['GET', 'POST']
   }
 });
@@ -33,7 +33,7 @@ app.use('/api/admin', adminRoutes);
 
 // Test route
 app.get('/', (req, res) => {
-  res.json({ message: 'School Delivery App API is running!' });
+  res.json({ message: 'ZUT Deliver API is running!' });
 });
 
 // Socket.io

@@ -32,7 +32,7 @@ const Login = () => {
   return (
     <div className="auth-container">
       <div className="auth-box">
-        <h2>🛵 SchoolDeliver</h2>
+        <h2> Zut Deliver</h2>
         <p>Login to your account</p>
         {error && <div className="error-msg">{error}</div>}
         <div className="form-group">
