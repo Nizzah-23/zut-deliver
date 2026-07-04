@@ -1,0 +1,21 @@
+# Node modules
+node_modules/
+client/node_modules/
+newclient/node_modules/
+server/node_modules/
+
+# Environment files
+.env
+server/.env
+
+# Build folders
+client/dist/
+newclient/dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
