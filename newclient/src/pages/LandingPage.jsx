@@ -86,9 +86,9 @@ function LandingPage() {
           gap: '32px', maxWidth: '900px', margin: '0 auto'
         }}>
           {[
-            { step: '1', icon: '🛍️', title: 'Browse Products', desc: 'Explore products from campus sellers — food, books, stationery and more' },
-            { step: '2', icon: '📦', title: 'Place Your Order', desc: 'Add items to your cart, enter your delivery address and checkout instantly' },
-            { step: '3', icon: '🚴', title: 'Track Live', desc: 'Watch your delivery guy in real-time as your order comes to you' }
+            { step: '1',  title: 'Browse Products', desc: 'Explore products from campus sellers — food, books, stationery and more' },
+            { step: '2',  title: 'Place Your Order', desc: 'Add items to your cart, enter your delivery address and checkout instantly' },
+            { step: '3',  title: 'Track Live', desc: 'Watch your delivery guy in real-time as your order comes to you' }
           ].map(item => (
             <div key={item.step} style={{
               background: 'white', borderRadius: '20px', padding: '40px 32px',
@@ -123,10 +123,10 @@ function LandingPage() {
           gap: '24px', maxWidth: '1000px', margin: '0 auto'
         }}>
           {[
-            { icon: '🛒', title: 'Buyers', color: '#667eea', desc: 'Students who want to order food, books and supplies delivered to their hostel or classroom' },
-            { icon: '🏪', title: 'Sellers', color: '#764ba2', desc: 'Campus vendors who want to list their products and reach more students easily' },
-            { icon: '🚴', title: 'Delivery Guys', color: '#f59e0b', desc: 'Students who want to earn money by delivering orders around campus' },
-            { icon: '👑', title: 'Admin', color: '#ef4444', desc: 'Platform manager who monitors all users, orders and products for quality control' }
+            {  title: 'Buyers', color: '#667eea', desc: 'Students who want to order food, books and supplies delivered to their hostel or classroom' },
+            {  title: 'Sellers', color: '#764ba2', desc: 'Campus vendors who want to list their products and reach more students easily' },
+            {  title: 'Delivery Guys', color: '#f59e0b', desc: 'Students who want to earn money by delivering orders around campus' },
+            {  title: 'Admin', color: '#ef4444', desc: 'Platform manager who monitors all users, orders and products for quality control' }
           ].map(item => (
             <div key={item.title} style={{
               background: '#f8fafc', borderRadius: '20px', padding: '36px 24px',
@@ -159,12 +159,12 @@ function LandingPage() {
           gap: '24px', maxWidth: '1000px', margin: '0 auto'
         }}>
           {[
-            { icon: '⚡', title: 'Real-Time Tracking', desc: 'Watch your delivery live on the map' },
-            { icon: '🔒', title: 'Secure Platform', desc: 'JWT authentication keeps your data safe' },
-            { icon: '📱', title: 'Easy to Use', desc: 'Simple interface anyone can use' },
-            { icon: '💰', title: 'Zambian Kwacha', desc: 'All prices in ZMW for local users' },
-            { icon: '🏪', title: 'Multiple Sellers', desc: 'Shop from many vendors at once' },
-            { icon: '📦', title: 'Order History', desc: 'Track all your past orders easily' }
+            {  title: 'Real-Time Tracking', desc: 'Watch your delivery live on the map' },
+            {  title: 'Secure Platform', desc: 'JWT authentication keeps your data safe' },
+            {   title: 'Easy to Use', desc: 'Simple interface anyone can use' },
+            {   title: 'Zambian Kwacha', desc: 'All prices in ZMW for local users' },
+            {  title: 'Multiple Sellers', desc: 'Shop from many vendors at once' },
+            {   title: 'Order History', desc: 'Track all your past orders easily' }
           ].map(item => (
             <div key={item.title} style={{
               background: 'rgba(255,255,255,0.1)', borderRadius: '16px',
@@ -212,9 +212,12 @@ function LandingPage() {
         <p style={{color: '#94a3b8', fontSize: '14px', marginBottom: '8px'}}>
           Campus Delivery System — Zambia University of Technology
         </p>
-        <p style={{color: '#475569', fontSize: '13px'}}>
-          Built with PERN Stack — PostgreSQL, Express, React, Node.js
-        </p>
+        <div>
+          <p>
+            Developt By NKH. 
+          </p>
+        </div>
+             
       </footer>
     </div>
   );
