@@ -15,6 +15,7 @@ router.get('/products', protect, authorizeRoles('buyer'), async (req, res) => {
     );
     res.json({ products: products.rows });
   } catch (err) {
+    console.error('Get products error:', err.message);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
@@ -25,11 +26,12 @@ router.post('/orders', protect, authorizeRoles('buyer'), async (req, res) => {
   const buyer_id = req.user.user_id;
 
   try {
-    // Calculate total
+    // Validate items exist and have stock
     let total_amount = 0;
     for (const item of items) {
       const product = await pool.query(
-        'SELECT * FROM products WHERE product_id = $1', [item.product_id]
+        'SELECT * FROM products WHERE product_id = $1', 
+        [item.product_id]
       );
       if (product.rows.length === 0) {
         return res.status(404).json({ message: `Product ${item.product_id} not found` });
@@ -42,8 +44,8 @@ router.post('/orders', protect, authorizeRoles('buyer'), async (req, res) => {
 
     // Create order
     const order = await pool.query(
-      `INSERT INTO orders (buyer_id, seller_id, total_amount, delivery_address)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
+      `INSERT INTO orders (buyer_id, seller_id, total_amount, delivery_address, status)
+       VALUES ($1, $2, $3, $4, 'pending') RETURNING *`,
       [buyer_id, seller_id, total_amount, delivery_address]
     );
 
@@ -51,16 +53,13 @@ router.post('/orders', protect, authorizeRoles('buyer'), async (req, res) => {
 
     // Add order items & update stock
     for (const item of items) {
-      const products = await pool.query(
-  `SELECT p.*, 
-          CONCAT('K', p.price::numeric::text) as price_display,
-          u.name as seller_name, u.phone as seller_phone
-   FROM products p
-   JOIN users u ON p.seller_id = u.user_id
-   WHERE p.stock > 0
-   ORDER BY p.created_at DESC`
-
+      // Insert order item
+      await pool.query(
+        `INSERT INTO order_items (order_id, product_id, quantity, price)
+         VALUES ($1, $2, $3, (SELECT price FROM products WHERE product_id = $2))`,
+        [order_id, item.product_id, item.quantity]
       );
+
       // Reduce stock
       await pool.query(
         'UPDATE products SET stock = stock - $1 WHERE product_id = $2',
@@ -68,8 +67,12 @@ router.post('/orders', protect, authorizeRoles('buyer'), async (req, res) => {
       );
     }
 
-    res.status(201).json({ message: 'Order placed!', order: order.rows[0] });
+    res.status(201).json({ 
+      message: 'Order placed successfully!', 
+      order: order.rows[0] 
+    });
   } catch (err) {
+    console.error('Order creation error:', err.message);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
@@ -89,6 +92,7 @@ router.get('/orders', protect, authorizeRoles('buyer'), async (req, res) => {
     );
     res.json({ orders: orders.rows });
   } catch (err) {
+    console.error('Get orders error:', err.message);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
@@ -113,6 +117,7 @@ router.get('/orders/:id/track', protect, authorizeRoles('buyer'), async (req, re
     }
     res.json({ order: order.rows[0] });
   } catch (err) {
+    console.error('Track order error:', err.message);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });

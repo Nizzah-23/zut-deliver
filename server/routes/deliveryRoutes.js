@@ -21,6 +21,7 @@ router.get('/orders', protect, authorizeRoles('delivery'), async (req, res) => {
     );
     res.json({ orders: orders.rows });
   } catch (err) {
+    console.error('Get delivery orders error:', err.message);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
@@ -40,6 +41,7 @@ router.get('/orders/available', protect, authorizeRoles('delivery'), async (req,
     );
     res.json({ orders: orders.rows });
   } catch (err) {
+    console.error('Get available orders error:', err.message);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
@@ -70,6 +72,7 @@ router.put('/orders/:id/accept', protect, authorizeRoles('delivery'), async (req
 
     res.json({ message: 'Order accepted!', order: order.rows[0] });
   } catch (err) {
+    console.error('Accept order error:', err.message);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
@@ -103,6 +106,7 @@ router.put('/orders/:id/location', protect, authorizeRoles('delivery'), async (r
 
     res.json({ message: 'Location updated!', delivery: delivery.rows[0] });
   } catch (err) {
+    console.error('Update location error:', err.message);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });

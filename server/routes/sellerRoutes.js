@@ -17,26 +17,27 @@ router.post('/products', protect, authorizeRoles('seller'), async (req, res) => 
     );
     res.status(201).json({ message: 'Product added!', product: product.rows[0] });
   } catch (err) {
+    console.error('Add product error:', err.message);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
 
-// GET ALL MY PRODUCTS (sellers only)
+// GET ALL MY PRODUCTS (sellers only) - FIXED
 router.get('/products', protect, authorizeRoles('seller'), async (req, res) => {
   const seller_id = req.user.user_id;
 
   try {
     const products = await pool.query(
-  `SELECT p.*, 
-          CONCAT('K', p.price::numeric::text) as price_display,
-          u.name as seller_name, u.phone as seller_phone
-   FROM products p
-   JOIN users u ON p.seller_id = u.user_id
-   WHERE p.stock > 0
-   ORDER BY p.created_at DESC`
-);
+      `SELECT p.*, u.name as seller_name, u.phone as seller_phone
+       FROM products p
+       JOIN users u ON p.seller_id = u.user_id
+       WHERE p.seller_id = $1
+       ORDER BY p.created_at DESC`,
+      [seller_id]
+    );
     res.json({ products: products.rows });
   } catch (err) {
+    console.error('Get products error:', err.message);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
@@ -58,6 +59,7 @@ router.put('/products/:id', protect, authorizeRoles('seller'), async (req, res) 
     }
     res.json({ message: 'Product updated!', product: product.rows[0] });
   } catch (err) {
+    console.error('Update product error:', err.message);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
@@ -77,6 +79,7 @@ router.delete('/products/:id', protect, authorizeRoles('seller'), async (req, re
     }
     res.json({ message: 'Product deleted!' });
   } catch (err) {
+    console.error('Delete product error:', err.message);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
@@ -96,6 +99,7 @@ router.get('/orders', protect, authorizeRoles('seller'), async (req, res) => {
     );
     res.json({ orders: orders.rows });
   } catch (err) {
+    console.error('Get seller orders error:', err.message);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
@@ -117,6 +121,7 @@ router.put('/orders/:id/status', protect, authorizeRoles('seller'), async (req, 
     }
     res.json({ message: 'Order status updated!', order: order.rows[0] });
   } catch (err) {
+    console.error('Update order status error:', err.message);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
