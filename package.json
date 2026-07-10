@@ -1,6 +1,23 @@
 {
   "name": "zut-deliver",
+  "version": "1.0.0",
+  "description": "Real-time campus delivery application",
+  "private": true,
+  "engines": {
+    "node": "18.x"
+  },
   "scripts": {
-    "start": "cd server && node server.js"
-  }
+    "start": "cd server && npm start",
+    "dev": "cd server && npm run dev",
+    "build": "cd server && npm install"
+  },
+  "keywords": [
+    "delivery",
+    "campus",
+    "zambia",
+    "pern"
+  ],
+  "author": "Nizzah",
+  "license": "MIT",
+  "devDependencies": {}
 }
