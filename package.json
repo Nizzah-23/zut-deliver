@@ -1,0 +1,6 @@
+{
+  "name": "zut-deliver",
+  "scripts": {
+    "start": "cd server && node server.js"
+  }
+}
