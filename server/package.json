@@ -1,27 +1,5 @@
 {
-  "name": "server",
-  "version": "1.0.0",
-  "description": "ZUT Deliver Backend",
-  "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js"
-  },
-  "keywords": [],
-  "author": "Nizzah",
-  "license": "ISC",
-  "dependencies": {
-    "bcryptjs": "^2.4.3",
-    "cors": "^2.8.5",
-    "dotenv": "^16.0.3",
-    "express": "^4.18.2",
-    "jsonwebtoken": "^9.0.0",
-    "nodemailer": "^6.9.0",
-    "pg": "^8.11.0",
-    "sequelize": "^6.32.1",
-    "socket.io": "^4.6.1"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.1"
+    "start": "node server.js"    
   }
 }
