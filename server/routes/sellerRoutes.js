@@ -22,7 +22,7 @@ router.post('/products', protect, authorizeRoles('seller'), async (req, res) => 
   }
 });
 
-// GET ALL MY PRODUCTS (sellers only) - FIXED
+// GET ALL MY PRODUCTS (sellers only)
 router.get('/products', protect, authorizeRoles('seller'), async (req, res) => {
   const seller_id = req.user.user_id;
 
