@@ -1,10 +1,8 @@
 /* eslint-disable */
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
-import axios from 'axios';
-import { io } from 'socket.io-client';
-
-const socket = io('http://localhost:5000');
+import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../firebase';
 
 function BuyerDashboard() {
   const { user, token, logout } = useAuth();
@@ -15,54 +13,44 @@ function BuyerDashboard() {
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
-  const [trackingUpdates, setTrackingUpdates] = useState({});
 
-  const headers = { Authorization: `Bearer ${token}` };
-
+  // Fetch products from Firestore
   const fetchProducts = useCallback(async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/buyer/products', { headers });
-      setProducts(res.data.products);
+      const q = query(collection(db, 'products'), where('stock', '>', 0));
+      const querySnapshot = await getDocs(q);
+      const productsList = [];
+      querySnapshot.forEach((doc) => {
+        productsList.push({ product_id: doc.id, ...doc.data() });
+      });
+      setProducts(productsList);
     } catch (err) {
-      console.error(err);
+      console.error('Error fetching products:', err);
+      setMessage('Failed to load products');
     }
-  }, [token]);
-
-  const fetchOrders = useCallback(async () => {
-    try {
-      const res = await axios.get('http://localhost:5000/api/buyer/orders', { headers });
-      setOrders(res.data.orders);
-    } catch (err) {
-      console.error(err);
-    }
-  }, [token]);
-
-  useEffect(() => {
-    fetchProducts();
-    fetchOrders();
-  }, [fetchProducts, fetchOrders]);
-
-  // Listen for real-time location updates
-  useEffect(() => {
-    socket.on('order_location', (data) => {
-      setTrackingUpdates(prev => ({
-        ...prev,
-        [data.order_id]: {
-          location: data.location,
-          status: data.status
-        }
-      }));
-      setMessage(`🚴 Live update: ${data.location}`);
-      setTimeout(() => setMessage(''), 5000);
-    });
-    return () => socket.off('order_location');
   }, []);
 
-  const trackOrder = (order_id) => {
-    socket.emit('track_order', order_id);
-    setMessage(`📍 Now tracking Order #${order_id} in real-time!`);
-    setTimeout(() => setMessage(''), 3000);
-  };
+  // Fetch orders from Firestore
+  const fetchOrders = useCallback(async () => {
+    try {
+      const q = query(collection(db, 'orders'), where('buyer_id', '==', user?.uid));
+      const querySnapshot = await getDocs(q);
+      const ordersList = [];
+      querySnapshot.forEach((doc) => {
+        ordersList.push({ order_id: doc.id, ...doc.data() });
+      });
+      setOrders(ordersList);
+    } catch (err) {
+      console.error('Error fetching orders:', err);
+    }
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (user?.uid) {
+      fetchProducts();
+      fetchOrders();
+    }
+  }, [user?.uid, fetchProducts, fetchOrders]);
 
   const addToCart = (product) => {
     const existing = cart.find(i => i.product_id === product.product_id);
@@ -92,19 +80,28 @@ function BuyerDashboard() {
       const seller_id = cart[0].seller_id;
       const items = cart.map(i => ({
         product_id: i.product_id,
-        quantity: i.quantity
+        quantity: i.quantity,
+        price: i.price
       }));
-      await axios.post('http://localhost:5000/api/buyer/orders',
-        { seller_id, delivery_address: deliveryAddress, items },
-        { headers }
-      );
+
+      await addDoc(collection(db, 'orders'), {
+        buyer_id: user?.uid,
+        seller_id: seller_id,
+        items: items,
+        total_amount: parseFloat(getTotal()),
+        delivery_address: deliveryAddress,
+        status: 'pending',
+        created_at: serverTimestamp()
+      });
+
       setMessage('✅ Order placed successfully!');
       setCart([]);
       setDeliveryAddress('');
       fetchOrders();
       setActiveTab('orders');
     } catch (err) {
-      setMessage(err.response?.data?.message || 'Failed to place order');
+      console.error('Order error:', err);
+      setMessage('Failed to place order');
     }
     setLoading(false);
   };
@@ -114,7 +111,7 @@ function BuyerDashboard() {
       <div className="navbar">
         <h1>🛵 ZUT Deliver</h1>
         <div className="navbar-right">
-          <span>👤 {user?.name} (Buyer)</span>
+          <span>👤 {user?.displayName || 'User'} (Buyer)</span>
           <button className="btn-danger" onClick={logout}>Logout</button>
         </div>
       </div>
@@ -145,14 +142,14 @@ function BuyerDashboard() {
                   <div className="price">K{product.price}</div>
                   <p>{product.description}</p>
                   <p>Stock: {product.stock}</p>
-                  <p>Seller: {product.seller_name}</p>
+                  <p>Seller: {product.seller_name || 'Unknown'}</p>
                   <button className="btn btn-primary" style={{marginTop:'12px'}}
                     onClick={() => addToCart(product)}>
                     Add to Cart
                   </button>
                 </div>
               ))}
-              {products.length === 0 && <p>No products available.</p>}
+              {products.length === 0 && <p>No products available. Add some to Firestore!</p>}
             </div>
           </div>
         )}
@@ -200,31 +197,9 @@ function BuyerDashboard() {
                 <h3>Order #{order.order_id}</h3>
                 <p>Total: K{order.total_amount}</p>
                 <p>Address: {order.delivery_address}</p>
-                <p>Seller: {order.seller_name}</p>
-                <p>Date: {new Date(order.created_at).toLocaleDateString()}</p>
-                <span className={`badge badge-${order.status}`}>
-                  {order.status.replace(/_/g, ' ').toUpperCase()}
-                </span>
-
-                {/* REAL-TIME TRACKING */}
-                {order.status === 'out_for_delivery' && (
-                  <div style={{marginTop:'12px', padding:'12px',
-                    background:'#f0f8ff', borderRadius:'8px'}}>
-                    <button className="btn btn-secondary"
-                      style={{width:'auto', padding:'8px 16px', marginBottom:'8px'}}
-                      onClick={() => trackOrder(order.order_id)}>
-                      📍 Track Live
-                    </button>
-                    {trackingUpdates[order.order_id] && (
-                      <div style={{marginTop:'8px'}}>
-                        <p style={{fontWeight:'600', color:'#0f3460'}}>
-                          🚴 Live Location:
-                        </p>
-                        <p>{trackingUpdates[order.order_id].location}</p>
-                        <p>Status: {trackingUpdates[order.order_id].status}</p>
-                      </div>
-                    )}
-                  </div>
+                <p>Status: {order.status?.toUpperCase()}</p>
+                {order.created_at && (
+                  <p>Date: {new Date(order.created_at.toDate()).toLocaleDateString()}</p>
                 )}
               </div>
             ))}
