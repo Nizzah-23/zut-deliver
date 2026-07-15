@@ -1,87 +1,105 @@
 /* eslint-disable */
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
-import axios from 'axios';
-import { io } from 'socket.io-client';
-
-const socket = io('http://localhost:5000');
+import { collection, query, where, getDocs, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../firebase';
 
 function DeliveryDashboard() {
-  const { user, token, logout } = useAuth();
+  const { user, logout } = useAuth();
   const [myOrders, setMyOrders] = useState([]);
   const [availableOrders, setAvailableOrders] = useState([]);
   const [activeTab, setActiveTab] = useState('available');
   const [message, setMessage] = useState('');
   const [locationInput, setLocationInput] = useState('');
 
-  const headers = { Authorization: `Bearer ${token}` };
-
+  // Fetch my orders
   const fetchMyOrders = useCallback(async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/delivery/orders', { headers });
-      setMyOrders(res.data.orders);
+      const q = query(collection(db, 'orders'), where('delivery_id', '==', user?.uid));
+      const querySnapshot = await getDocs(q);
+      const ordersList = [];
+      querySnapshot.forEach((doc) => {
+        ordersList.push({ order_id: doc.id, doc_ref: doc, ...doc.data() });
+      });
+      setMyOrders(ordersList);
     } catch (err) {
-      console.error(err);
+      console.error('Error fetching my orders:', err);
     }
-  }, [token]);
+  }, [user?.uid]);
 
+  // Fetch available orders
   const fetchAvailableOrders = useCallback(async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/delivery/orders/available', { headers });
-      setAvailableOrders(res.data.orders);
+      const q = query(
+        collection(db, 'orders'),
+        where('delivery_id', '==', null),
+        where('status', '==', 'confirmed')
+      );
+      const querySnapshot = await getDocs(q);
+      const ordersList = [];
+      querySnapshot.forEach((doc) => {
+        ordersList.push({ order_id: doc.id, doc_ref: doc, ...doc.data() });
+      });
+      setAvailableOrders(ordersList);
     } catch (err) {
-      console.error(err);
+      console.error('Error fetching available orders:', err);
     }
-  }, [token]);
+  }, []);
 
   useEffect(() => {
-    fetchMyOrders();
-    fetchAvailableOrders();
-  }, [fetchMyOrders, fetchAvailableOrders]);
+    if (user?.uid) {
+      fetchMyOrders();
+      fetchAvailableOrders();
+    }
+  }, [user?.uid, fetchMyOrders, fetchAvailableOrders]);
 
-  const acceptOrder = async (order_id) => {
+  const acceptOrder = async (order_id, docRef) => {
     try {
-      await axios.put(`http://localhost:5000/api/delivery/orders/${order_id}/accept`,
-        {}, { headers });
+      await updateDoc(docRef, {
+        delivery_id: user?.uid,
+        status: 'out_for_delivery',
+        updated_at: serverTimestamp()
+      });
       setMessage('✅ Order accepted!');
       fetchMyOrders();
       fetchAvailableOrders();
       setActiveTab('myorders');
     } catch (err) {
-      setMessage(err.response?.data?.message || 'Failed to accept order');
+      console.error('Error accepting order:', err);
+      setMessage('Failed to accept order');
     }
     setTimeout(() => setMessage(''), 3000);
   };
 
-  const updateLocation = async (order_id, status, location) => {
+  const updateLocation = async (order_id, docRef, status, location) => {
     try {
-      await axios.put(`http://localhost:5000/api/delivery/orders/${order_id}/location`,
-        { status, current_location: location }, { headers });
-
-      // Send real-time update via Socket.io
-      socket.emit('location_update', {
-        order_id,
-        location,
-        status
+      await updateDoc(docRef, {
+        status: status,
+        last_location: location,
+        updated_at: serverTimestamp()
       });
-
-      setMessage('✅ Location updated & sent to buyer!');
+      setMessage('✅ Location updated!');
       fetchMyOrders();
     } catch (err) {
+      console.error('Error updating location:', err);
       setMessage('Failed to update location');
     }
     setTimeout(() => setMessage(''), 3000);
   };
 
-  const sendCustomLocation = (order_id) => {
+  const sendCustomLocation = async (order_id, docRef) => {
     if (!locationInput) return setMessage('Please enter a location!');
-    socket.emit('location_update', {
-      order_id,
-      location: locationInput,
-      status: 'on_the_way'
-    });
-    setMessage(`📍 Location "${locationInput}" sent to buyer!`);
-    setLocationInput('');
+    try {
+      await updateDoc(docRef, {
+        last_location: locationInput,
+        updated_at: serverTimestamp()
+      });
+      setMessage(`📍 Location "${locationInput}" sent!`);
+      setLocationInput('');
+      fetchMyOrders();
+    } catch (err) {
+      setMessage('Failed to send location');
+    }
     setTimeout(() => setMessage(''), 3000);
   };
 
@@ -90,7 +108,7 @@ function DeliveryDashboard() {
       <div className="navbar">
         <h1>🛵 ZUT Deliver</h1>
         <div className="navbar-right">
-          <span>👤 {user?.name} (Delivery)</span>
+          <span>👤 {user?.displayName || 'Delivery'} (Delivery)</span>
           <button className="btn-danger" onClick={logout}>Logout</button>
         </div>
       </div>
@@ -134,14 +152,11 @@ function DeliveryDashboard() {
             {availableOrders.map(order => (
               <div key={order.order_id} className="card">
                 <h3>Order #{order.order_id}</h3>
-                <p>Customer: {order.buyer_name}</p>
-                <p>Phone: {order.buyer_phone}</p>
-                <p>Seller: {order.seller_name}</p>
                 <p>Total: K{order.total_amount}</p>
                 <p>Deliver to: {order.delivery_address}</p>
                 <button className="btn btn-primary"
                   style={{marginTop:'12px', width:'auto', padding:'10px 20px'}}
-                  onClick={() => acceptOrder(order.order_id)}>
+                  onClick={() => acceptOrder(order.order_id, order.doc_ref)}>
                   🚴 Accept Delivery
                 </button>
               </div>
@@ -158,12 +173,10 @@ function DeliveryDashboard() {
             {myOrders.map(order => (
               <div key={order.order_id} className="card">
                 <h3>Order #{order.order_id}</h3>
-                <p>Customer: {order.buyer_name}</p>
-                <p>Phone: {order.buyer_phone}</p>
                 <p>Total: K{order.total_amount}</p>
                 <p>Deliver to: {order.delivery_address}</p>
                 <span className={`badge badge-${order.status}`}>
-                  {order.status.replace(/_/g, ' ').toUpperCase()}
+                  {order.status?.replace(/_/g, ' ').toUpperCase()}
                 </span>
 
                 {order.status === 'out_for_delivery' && (
@@ -174,22 +187,21 @@ function DeliveryDashboard() {
                     <div style={{display:'flex', gap:'8px', flexWrap:'wrap', marginBottom:'12px'}}>
                       <button className="btn btn-secondary"
                         style={{width:'auto', padding:'8px 16px'}}
-                        onClick={() => updateLocation(order.order_id, 'picked_up', 'Picked up from seller')}>
+                        onClick={() => updateLocation(order.order_id, order.doc_ref, 'picked_up', 'Picked up from seller')}>
                         📦 Picked Up
                       </button>
                       <button className="btn btn-secondary"
                         style={{width:'auto', padding:'8px 16px'}}
-                        onClick={() => updateLocation(order.order_id, 'on_the_way', 'On the way to customer')}>
+                        onClick={() => updateLocation(order.order_id, order.doc_ref, 'on_the_way', 'On the way to customer')}>
                         🚴 On The Way
                       </button>
                       <button className="btn btn-primary"
                         style={{width:'auto', padding:'8px 16px'}}
-                        onClick={() => updateLocation(order.order_id, 'delivered', 'Delivered to customer')}>
+                        onClick={() => updateLocation(order.order_id, order.doc_ref, 'delivered', 'Delivered to customer')}>
                         ✅ Delivered
                       </button>
                     </div>
 
-                    {/* SEND CUSTOM LOCATION */}
                     <p style={{fontWeight:'600', marginBottom:'8px'}}>
                       📍 Send Custom Location:
                     </p>
@@ -201,7 +213,7 @@ function DeliveryDashboard() {
                       />
                       <button className="btn btn-primary"
                         style={{width:'auto', padding:'10px 16px'}}
-                        onClick={() => sendCustomLocation(order.order_id)}>
+                        onClick={() => sendCustomLocation(order.order_id, order.doc_ref)}>
                         Send
                       </button>
                     </div>
