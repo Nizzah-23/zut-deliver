@@ -19,5 +19,7 @@
   ],
   "author": "Nizzah",
   "license": "MIT",
-  "devDependencies": {}
+  "dependencies": {
+    "firebase": "^12.16.0"
+  }
 }

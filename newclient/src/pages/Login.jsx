@@ -1,92 +1,61 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../AuthContext';
-import axios from 'axios';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../firebase';
 
-const Login = () => {
+export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
-  const navigate = useNavigate();
 
-  const handleLogin = async () => {
-    setError('');
+  const handleLogin = async (e) => {
+    e.preventDefault();
     setLoading(true);
+    setError('');
+
     try {
-      const res = await axios.post('http://localhost:5000/api/auth/login', {
-        email, password
-      });
-      login(res.data.user, res.data.token);
-      const role = res.data.user.role;
-      if (role === 'buyer') navigate('/buyer');
-      else if (role === 'seller') navigate('/seller');
-      else if (role === 'delivery') navigate('/delivery');
-      else if (role === 'admin') navigate('/admin');
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+      const token = await user.getIdToken();
+      
+      localStorage.setItem('userToken', token);
+      localStorage.setItem('userId', user.uid);
+      localStorage.setItem('userEmail', user.email);
+      
+      console.log('Login successful:', user.email);
+      // Redirect to dashboard
+      window.location.href = '/dashboard';
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed');
+      setError(err.message);
+      console.error('Login error:', err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
-    <div className="auth-container">
-      <div className="auth-box">
-        <h2>ZUT Deliver</h2>
-        <p>Login to your account</p>
-        {error && <div className="error-msg">{error}</div>}
-        <div className="form-group">
-          <label>Email</label>
-          <input
-            type="email"
-            placeholder="Enter your email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </div>
-        <div className="form-group">
-          <label>Password</label>
-          <div style={{position: 'relative'}}>
-            <input
-              type={showPassword ? 'text' : 'password'}
-              placeholder="Enter your password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={{paddingRight: '50px'}}
-            />
-            <button
-              onClick={() => setShowPassword(!showPassword)}
-              style={{
-                position: 'absolute',
-                right: '12px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '14px',
-                color: '#888',
-                fontWeight: '600'
-              }}>
-              {showPassword ? 'Hide' : 'Show'}
-            </button>
-          </div>
-        </div>
-        <button
-          className="btn btn-primary"
-          onClick={handleLogin}
-          disabled={loading}>
+    <div className="login-container">
+      <h2>Login</h2>
+      {error && <p className="error">{error}</p>}
+      <form onSubmit={handleLogin}>
+        <input
+          type="email"
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+        />
+        <input
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
+        <button type="submit" disabled={loading}>
           {loading ? 'Logging in...' : 'Login'}
         </button>
-        <div className="auth-switch">
-          Don't have an account?{' '}
-          <span onClick={() => navigate('/register')}>Register here</span>
-        </div>
-      </div>
+      </form>
     </div>
   );
-};
-
-export default Login;
+}
