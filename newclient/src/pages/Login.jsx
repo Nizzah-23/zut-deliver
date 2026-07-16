@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../firebase';
 import { useAuth } from '../AuthContext';
-import axios from 'axios';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -14,19 +16,52 @@ const Login = () => {
 
   const handleLogin = async () => {
     setError('');
+    if (!email || !password) {
+      return setError('Email and password are required!');
+    }
     setLoading(true);
     try {
-      const res = await axios.post('http://localhost:5000/api/auth/login', {
-        email, password
-      });
-      login(res.data.user, res.data.token);
-      const role = res.data.user.role;
-      if (role === 'buyer') navigate('/buyer');
-      else if (role === 'seller') navigate('/seller');
-      else if (role === 'delivery') navigate('/delivery');
-      else if (role === 'admin') navigate('/admin');
+      // Sign in with Firebase Auth
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+      const token = await user.getIdToken();
+
+      // Get user data from Firestore
+      const userDocRef = doc(db, 'users', user.uid);
+      const userDocSnap = await getDoc(userDocRef);
+
+      if (userDocSnap.exists()) {
+        const userData = userDocSnap.data();
+        const userInfo = {
+          uid: user.uid,
+          name: userData.name,
+          email: user.email,
+          role: userData.role,
+          phone: userData.phone
+        };
+
+        // Save to AuthContext
+        login(userInfo, token);
+
+        // Redirect based on role
+        if (userData.role === 'buyer') navigate('/buyer');
+        else if (userData.role === 'seller') navigate('/seller');
+        else if (userData.role === 'delivery') navigate('/delivery');
+        else if (userData.role === 'admin') navigate('/admin');
+      } else {
+        setError('User data not found!');
+      }
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed');
+      console.error('Login error:', err);
+      if (err.code === 'auth/user-not-found') {
+        setError('Email not found!');
+      } else if (err.code === 'auth/wrong-password') {
+        setError('Invalid password!');
+      } else if (err.code === 'auth/invalid-credential') {
+        setError('Invalid email or password!');
+      } else {
+        setError(err.message || 'Login failed');
+      }
     }
     setLoading(false);
   };
