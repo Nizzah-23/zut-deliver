@@ -60,7 +60,7 @@ function DeliveryDashboard() {
         status: 'out_for_delivery',
         updated_at: serverTimestamp()
       });
-      setMessage('✅ Order accepted!');
+      setMessage(' Order accepted!');
       fetchMyOrders();
       fetchAvailableOrders();
       setActiveTab('myorders');
@@ -94,7 +94,7 @@ function DeliveryDashboard() {
         last_location: locationInput,
         updated_at: serverTimestamp()
       });
-      setMessage(`📍 Location "${locationInput}" sent!`);
+      setMessage(` Location "${locationInput}" sent!`);
       setLocationInput('');
       fetchMyOrders();
     } catch (err) {
@@ -106,9 +106,9 @@ function DeliveryDashboard() {
   return (
     <div className="dashboard">
       <div className="navbar">
-        <h1>🛵 ZUT Deliver</h1>
+        <h1> ZUT Deliver</h1>
         <div className="navbar-right">
-          <span>👤 {user?.displayName || 'Delivery'} (Delivery)</span>
+          <span> {user?.displayName || 'Delivery'} (Delivery)</span>
           <button className="btn-danger" onClick={logout}>Logout</button>
         </div>
       </div>
@@ -138,11 +138,11 @@ function DeliveryDashboard() {
         <div className="tabs">
           <button className={`tab ${activeTab === 'available' ? 'active' : ''}`}
             onClick={() => setActiveTab('available')}>
-            📋 Available ({availableOrders.length})
+             Available ({availableOrders.length})
           </button>
           <button className={`tab ${activeTab === 'myorders' ? 'active' : ''}`}
             onClick={() => setActiveTab('myorders')}>
-            🚴 My Deliveries ({myOrders.length})
+             My Deliveries ({myOrders.length})
           </button>
         </div>
 
@@ -157,7 +157,7 @@ function DeliveryDashboard() {
                 <button className="btn btn-primary"
                   style={{marginTop:'12px', width:'auto', padding:'10px 20px'}}
                   onClick={() => acceptOrder(order.order_id, order.doc_ref)}>
-                  🚴 Accept Delivery
+                   Accept Delivery
                 </button>
               </div>
             ))}
@@ -188,22 +188,22 @@ function DeliveryDashboard() {
                       <button className="btn btn-secondary"
                         style={{width:'auto', padding:'8px 16px'}}
                         onClick={() => updateLocation(order.order_id, order.doc_ref, 'picked_up', 'Picked up from seller')}>
-                        📦 Picked Up
+                         Picked Up
                       </button>
                       <button className="btn btn-secondary"
                         style={{width:'auto', padding:'8px 16px'}}
                         onClick={() => updateLocation(order.order_id, order.doc_ref, 'on_the_way', 'On the way to customer')}>
-                        🚴 On The Way
+                         On The Way
                       </button>
                       <button className="btn btn-primary"
                         style={{width:'auto', padding:'8px 16px'}}
                         onClick={() => updateLocation(order.order_id, order.doc_ref, 'delivered', 'Delivered to customer')}>
-                        ✅ Delivered
+                         Delivered
                       </button>
                     </div>
 
                     <p style={{fontWeight:'600', marginBottom:'8px'}}>
-                      📍 Send Custom Location:
+                       Send Custom Location:
                     </p>
                     <div className="input-group">
                       <input

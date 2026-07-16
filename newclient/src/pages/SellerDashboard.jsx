@@ -52,10 +52,10 @@ function SellerDashboard() {
   };
 
   const handleSubmit = async () => {
-    if (!form.name) return showMessage('❌ Product name is required!', 'error');
-    if (!form.price) return showMessage('❌ Price is required!', 'error');
-    if (!form.stock) return showMessage('❌ Stock quantity is required!', 'error');
-    if (!form.description) return showMessage('❌ Description is required!', 'error');
+    if (!form.name) return showMessage(' Product name is required!', 'error');
+    if (!form.price) return showMessage(' Price is required!', 'error');
+    if (!form.stock) return showMessage(' Stock quantity is required!', 'error');
+    if (!form.description) return showMessage(' Description is required!', 'error');
 
     setLoading(true);
     try {
@@ -68,7 +68,7 @@ function SellerDashboard() {
         setProducts(prev => prev.map(p =>
           p.product_id === editingId ? res.data.product : p
         ));
-        showMessage('✅ Product updated successfully!');
+        showMessage(' Product updated successfully!');
         setEditingId(null);
       } else {
         const res = await axios.post(
@@ -77,12 +77,12 @@ function SellerDashboard() {
           { headers }
         );
         setProducts(prev => [res.data.product, ...prev]);
-        showMessage('✅ Product added successfully!');
+        showMessage(' Product added successfully!');
       }
       setForm({ name: '', description: '', price: '', stock: '', image_url: '' });
       setActiveTab('products');
     } catch (err) {
-      showMessage(err.response?.data?.message || '❌ Failed to save product', 'error');
+      showMessage(err.response?.data?.message || ' Failed to save product', 'error');
     }
     setLoading(false);
   };
@@ -108,11 +108,11 @@ function SellerDashboard() {
         { headers }
       );
       setProducts(prev => prev.filter(p => p.product_id !== id));
-      showMessage('✅ Product deleted successfully!');
+      showMessage(' Product deleted successfully!');
     } catch (err) {
       console.error('Delete error:', err.response?.data);
       showMessage(
-        err.response?.data?.message || '❌ Failed to delete product.',
+        err.response?.data?.message || ' Failed to delete product.',
         'error'
       );
     }
@@ -128,9 +128,9 @@ function SellerDashboard() {
       setOrders(prev => prev.map(o =>
         o.order_id === order_id ? { ...o, status } : o
       ));
-      showMessage('✅ Order status updated!');
+      showMessage(' Order status updated!');
     } catch (err) {
-      showMessage('❌ Failed to update order', 'error');
+      showMessage(' Failed to update order', 'error');
     }
   };
 
@@ -142,9 +142,9 @@ function SellerDashboard() {
   return (
     <div className="dashboard">
       <div className="navbar">
-        <h1>🛵 ZUT Deliver</h1>
+        <h1> ZUT Deliver</h1>
         <div className="navbar-right">
-          <span>👤 {user?.name} (Seller)</span>
+          <span> {user?.name} (Seller)</span>
           <button className="btn-danger" onClick={logout}>Logout</button>
         </div>
       </div>
@@ -181,15 +181,15 @@ function SellerDashboard() {
         <div className="tabs">
           <button className={`tab ${activeTab === 'products' ? 'active' : ''}`}
             onClick={() => setActiveTab('products')}>
-            📦 My Products ({products.length})
+             My Products ({products.length})
           </button>
           <button className={`tab ${activeTab === 'add' ? 'active' : ''}`}
             onClick={() => { resetForm(); setActiveTab('add'); }}>
-            ➕ {editingId ? 'Edit Product' : 'Add New Product'}
+             {editingId ? 'Edit Product' : 'Add New Product'}
           </button>
           <button className={`tab ${activeTab === 'orders' ? 'active' : ''}`}
             onClick={() => setActiveTab('orders')}>
-            🧾 Orders ({orders.length})
+             Orders ({orders.length})
           </button>
         </div>
 
@@ -202,7 +202,7 @@ function SellerDashboard() {
                 <button className="btn btn-primary"
                   style={{width:'auto', padding:'12px 24px'}}
                   onClick={() => setActiveTab('add')}>
-                  ➕ Add Your First Product
+                  Add Your First Product
                 </button>
               </div>
             ) : (
@@ -217,14 +217,14 @@ function SellerDashboard() {
                       <button className="btn btn-secondary"
                         style={{flex:1, padding:'8px'}}
                         onClick={() => handleEdit(product)}>
-                        ✏️ Edit
+                         Edit
                       </button>
                       <button
                         style={{flex:1, padding:'8px', borderRadius:'8px',
                           border:'none', cursor:'pointer',
                           background:'#e94560', color:'white', fontWeight:'600'}}
                         onClick={() => handleDelete(product.product_id)}>
-                        🗑️ Delete
+                         Delete
                       </button>
                     </div>
                   </div>
@@ -237,7 +237,7 @@ function SellerDashboard() {
         {activeTab === 'add' && (
           <div className="card">
             <p className="section-title">
-              {editingId ? '✏️ Edit Product' : '➕ Add New Product'}
+              {editingId ? ' Edit Product' : '➕ Add New Product'}
             </p>
             <div className="form-row">
               <div className="form-group">
@@ -293,11 +293,11 @@ function SellerDashboard() {
               orders.map(order => (
                 <div key={order.order_id} className="card">
                   <h3>Order #{order.order_id}</h3>
-                  <p>👤 Customer: <strong>{order.buyer_name}</strong></p>
-                  <p>📞 Phone: {order.buyer_phone}</p>
-                  <p>💰 Total: <strong>K{order.total_amount}</strong></p>
-                  <p>📍 Address: {order.delivery_address}</p>
-                  <p>📅 Date: {new Date(order.created_at).toLocaleDateString()}</p>
+                  <p> Customer: <strong>{order.buyer_name}</strong></p>
+                  <p> Phone: {order.buyer_phone}</p>
+                  <p> Total: <strong>K{order.total_amount}</strong></p>
+                  <p> Address: {order.delivery_address}</p>
+                  <p>Date: {new Date(order.created_at).toLocaleDateString()}</p>
                   <span className={`badge badge-${order.status}`}>
                     {order.status.replace(/_/g, ' ').toUpperCase()}
                   </span>
@@ -306,7 +306,7 @@ function SellerDashboard() {
                       <button className="btn btn-primary"
                         style={{width:'auto', padding:'8px 20px'}}
                         onClick={() => updateOrderStatus(order.order_id, 'confirmed')}>
-                        ✅ Confirm Order
+                        Confirm Order
                       </button>
                     </div>
                   )}
