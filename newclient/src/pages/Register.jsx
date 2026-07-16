@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { setDoc, doc } from 'firebase/firestore';
+import { auth, db } from '../firebase';
 
 const Register = () => {
   const [form, setForm] = useState({
@@ -15,17 +17,14 @@ const Register = () => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  // Password strength checker
   const getPasswordStrength = (password) => {
     if (!password) return { strength: 0, label: '', color: '' };
-    
     let score = 0;
     if (password.length >= 8) score++;
     if (password.length >= 12) score++;
     if (/[A-Z]/.test(password)) score++;
     if (/[0-9]/.test(password)) score++;
     if (/[^A-Za-z0-9]/.test(password)) score++;
-
     if (score <= 1) return { strength: 20, label: 'Very Weak', color: '#e74c3c' };
     if (score === 2) return { strength: 40, label: 'Weak', color: '#e67e22' };
     if (score === 3) return { strength: 60, label: 'Fair', color: '#f1c40f' };
@@ -40,7 +39,6 @@ const Register = () => {
     if (password.length < 8) tips.push('At least 8 characters');
     if (!/[A-Z]/.test(password)) tips.push('At least one uppercase letter');
     if (!/[0-9]/.test(password)) tips.push('At least one number');
-  
     return tips;
   };
 
@@ -49,20 +47,45 @@ const Register = () => {
   const handleRegister = async () => {
     setError('');
 
-    // Validate password strength
+    if (!form.name || !form.email || !form.password) {
+      return setError('All fields are required!');
+    }
     if (form.password.length < 8) {
       return setError('Password must be at least 8 characters!');
     }
     if (passwordStrength.strength < 60) {
-      return setError('Password is too weak! Please make it stronger.');
+      return setError('Password is too weak!');
     }
 
     setLoading(true);
     try {
-      await axios.post('http://localhost:5000/api/auth/register', form);
+      // Create user with Firebase Auth
+      const userCredential = await createUserWithEmailAndPassword(auth, form.email, form.password);
+      const user = userCredential.user;
+
+      // Update user profile
+      await updateProfile(user, { displayName: form.name });
+
+      // Save user data to Firestore
+      await setDoc(doc(db, 'users', user.uid), {
+        name: form.name,
+        email: form.email,
+        role: form.role,
+        phone: form.phone,
+        created_at: new Date()
+      });
+
+      console.log('Registration successful!');
       navigate('/login');
     } catch (err) {
-      setError(err.response?.data?.message || 'Registration failed');
+      console.error('Registration error:', err);
+      if (err.code === 'auth/email-already-in-use') {
+        setError('Email already exists!');
+      } else if (err.code === 'auth/weak-password') {
+        setError('Password is too weak!');
+      } else {
+        setError(err.message || 'Registration failed');
+      }
     }
     setLoading(false);
   };
@@ -121,7 +144,6 @@ const Register = () => {
             </button>
           </div>
 
-          {/* PASSWORD STRENGTH BAR */}
           {form.password.length > 0 && (
             <div style={{marginTop: '10px'}}>
               <div style={{
@@ -157,7 +179,6 @@ const Register = () => {
                 </span>
               </div>
 
-              {/* PASSWORD TIPS */}
               {passwordTips.length > 0 && (
                 <div style={{
                   marginTop: '8px',
@@ -177,7 +198,6 @@ const Register = () => {
                 </div>
               )}
 
-              {/* ALL GOOD MESSAGE */}
               {passwordTips.length === 0 && (
                 <div style={{
                   marginTop: '8px',
