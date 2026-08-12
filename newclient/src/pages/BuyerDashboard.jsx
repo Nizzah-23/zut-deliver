@@ -1,7 +1,7 @@
 /* eslint-disable */
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
-import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 
 function BuyerDashboard() {
@@ -13,6 +13,7 @@ function BuyerDashboard() {
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [notification, setNotification] = useState(null);
 
   const fetchProducts = useCallback(async () => {
     try {
@@ -29,26 +30,62 @@ function BuyerDashboard() {
     }
   }, []);
 
-  const fetchOrders = useCallback(async () => {
-    try {
-      const q = query(collection(db, 'orders'), where('buyer_id', '==', user?.uid));
-      const querySnapshot = await getDocs(q);
+  // REAL-TIME LISTENER for orders
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    fetchProducts();
+
+    const q = query(collection(db, 'orders'), where('buyer_id', '==', user?.uid));
+
+    // onSnapshot listens for real-time changes
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const ordersList = [];
       querySnapshot.forEach((doc) => {
         ordersList.push({ order_id: doc.id, ...doc.data() });
       });
+
+      // Check for status changes and notify buyer
+      querySnapshot.docChanges().forEach((change) => {
+        if (change.type === 'modified') {
+          const updatedOrder = change.doc.data();
+          const orderId = change.doc.id;
+
+          if (updatedOrder.status === 'confirmed') {
+            showNotification(
+              `Your order #${orderId.slice(0, 8)}... has been CONFIRMED by the seller!`,
+              'success'
+            );
+          } else if (updatedOrder.status === 'cancelled') {
+            showNotification(
+              `Your order #${orderId.slice(0, 8)}... has been CANCELLED.`,
+              'error'
+            );
+          } else if (updatedOrder.status === 'out_for_delivery') {
+            showNotification(
+              `Your order #${orderId.slice(0, 8)}... is OUT FOR DELIVERY!`,
+              'success'
+            );
+          } else if (updatedOrder.status === 'delivered') {
+            showNotification(
+              `Your order #${orderId.slice(0, 8)}... has been DELIVERED!`,
+              'success'
+            );
+          }
+        }
+      });
+
       setOrders(ordersList);
-    } catch (err) {
-      console.error('Error fetching orders:', err);
-    }
+    });
+
+    // Cleanup listener when component unmounts
+    return () => unsubscribe();
   }, [user?.uid]);
 
-  useEffect(() => {
-    if (user?.uid) {
-      fetchProducts();
-      fetchOrders();
-    }
-  }, [user?.uid, fetchProducts, fetchOrders]);
+  const showNotification = (msg, type = 'success') => {
+    setNotification({ msg, type });
+    setTimeout(() => setNotification(null), 6000);
+  };
 
   const addToCart = (product) => {
     const existing = cart.find(i => i.product_id === product.product_id);
@@ -92,10 +129,9 @@ function BuyerDashboard() {
         created_at: serverTimestamp()
       });
 
-      setMessage('✅ Order placed successfully!');
+      setMessage('Order placed successfully!');
       setCart([]);
       setDeliveryAddress('');
-      fetchOrders();
       setActiveTab('orders');
     } catch (err) {
       console.error('Order error:', err);
@@ -104,8 +140,80 @@ function BuyerDashboard() {
     setLoading(false);
   };
 
+  const getStatusColor = (status) => {
+    if (status === 'pending') return { bg: '#fef3c7', color: '#d97706' };
+    if (status === 'confirmed') return { bg: '#d1fae5', color: '#0d9488' };
+    if (status === 'out_for_delivery') return { bg: '#dbeafe', color: '#2563eb' };
+    if (status === 'delivered') return { bg: '#d1fae5', color: '#059669' };
+    if (status === 'cancelled') return { bg: '#fee2e2', color: '#dc2626' };
+    return { bg: '#d1fae5', color: '#0d9488' };
+  };
+
   return (
     <div style={{minHeight: '100vh', background: '#f0fdfa', fontFamily: 'Inter, sans-serif'}}>
+
+      {/* REAL-TIME NOTIFICATION BANNER */}
+      {notification && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          right: '20px',
+          zIndex: 9999,
+          background: notification.type === 'success'
+            ? 'linear-gradient(135deg, #0d9488, #10b981)'
+            : '#ef4444',
+          color: 'white',
+          padding: '16px 24px',
+          borderRadius: '16px',
+          boxShadow: '0 8px 30px rgba(0,0,0,0.2)',
+          maxWidth: '350px',
+          fontWeight: '600',
+          fontSize: '14px',
+          animation: 'slideIn 0.5s ease-out',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px'
+        }}>
+          <span style={{fontSize: '20px'}}>
+            {notification.type === 'success' ? '✓' : '!'}
+          </span>
+          <div>
+            <p style={{margin: 0, fontWeight: '700', marginBottom: '4px'}}>
+              Order Update
+            </p>
+            <p style={{margin: 0, fontSize: '13px', opacity: 0.9}}>
+              {notification.msg}
+            </p>
+          </div>
+          <button
+            onClick={() => setNotification(null)}
+            style={{
+              background: 'rgba(255,255,255,0.2)',
+              border: 'none',
+              color: 'white',
+              cursor: 'pointer',
+              borderRadius: '50%',
+              width: '24px',
+              height: '24px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: '700',
+              marginLeft: 'auto'
+            }}
+          >
+            x
+          </button>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes slideIn {
+          from { opacity: 0; transform: translateX(100px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+      `}</style>
+
       {/* NAVBAR */}
       <div style={{
         background: 'white',
@@ -126,11 +234,11 @@ function BuyerDashboard() {
           WebkitTextFillColor: 'transparent',
           margin: 0
         }}>
-          🛵 ZUT Deliver
+          ZUT Deliver
         </h1>
         <div style={{display: 'flex', gap: '20px', alignItems: 'center'}}>
           <span style={{color: '#0f766e', fontWeight: '600'}}>
-            👤 {user?.displayName || 'User'} (Buyer)
+            {user?.name || user?.displayName || 'User'} (Buyer)
           </span>
           <button
             onClick={logout}
@@ -144,8 +252,6 @@ function BuyerDashboard() {
               cursor: 'pointer',
               transition: 'all 0.3s ease'
             }}
-            onMouseOver={(e) => e.target.style.opacity = '0.9'}
-            onMouseOut={(e) => e.target.style.opacity = '1'}
           >
             Logout
           </button>
@@ -156,8 +262,8 @@ function BuyerDashboard() {
       <div style={{maxWidth: '1200px', margin: '0 auto', padding: '40px 20px'}}>
         {message && (
           <div style={{
-            background: message.includes('✅') ? '#d1fae5' : '#fee2e2',
-            color: message.includes('✅') ? '#0d9488' : '#dc2626',
+            background: message.includes('successfully') ? '#d1fae5' : '#fee2e2',
+            color: message.includes('successfully') ? '#0d9488' : '#dc2626',
             padding: '16px 20px',
             borderRadius: '12px',
             marginBottom: '24px',
@@ -168,7 +274,13 @@ function BuyerDashboard() {
         )}
 
         {/* TABS */}
-        <div style={{display: 'flex', gap: '12px', marginBottom: '32px', borderBottom: '2px solid #d1fae5', paddingBottom: '16px'}}>
+        <div style={{
+          display: 'flex',
+          gap: '12px',
+          marginBottom: '32px',
+          borderBottom: '2px solid #d1fae5',
+          paddingBottom: '16px'
+        }}>
           {['browse', 'cart', 'orders'].map(tab => (
             <button
               key={tab}
@@ -177,17 +289,18 @@ function BuyerDashboard() {
                 padding: '12px 24px',
                 borderRadius: '12px',
                 border: 'none',
-                background: activeTab === tab ? 'linear-gradient(135deg, #0d9488, #10b981)' : 'white',
+                background: activeTab === tab
+                  ? 'linear-gradient(135deg, #0d9488, #10b981)'
+                  : 'white',
                 color: activeTab === tab ? 'white' : '#0f766e',
                 fontWeight: '600',
                 cursor: 'pointer',
-                transition: 'all 0.3s ease',
-                borderBottom: activeTab === tab ? '3px solid #0d9488' : 'none'
+                transition: 'all 0.3s ease'
               }}
             >
-              {tab === 'browse' && '🛍️ Browse Products'}
-              {tab === 'cart' && `🛒 Cart (${cart.length})`}
-              {tab === 'orders' && '📦 My Orders'}
+              {tab === 'browse' && 'Browse Products'}
+              {tab === 'cart' && `Cart (${cart.length})`}
+              {tab === 'orders' && `My Orders (${orders.length})`}
             </button>
           ))}
         </div>
@@ -222,12 +335,23 @@ function BuyerDashboard() {
                   }}
                 >
                   <h3 style={{color: '#0f172a', marginBottom: '8px'}}>{product.name}</h3>
-                  <div style={{fontSize: '24px', fontWeight: '800', color: '#0d9488', marginBottom: '12px'}}>
+                  <div style={{
+                    fontSize: '24px',
+                    fontWeight: '800',
+                    color: '#0d9488',
+                    marginBottom: '12px'
+                  }}>
                     K{product.price}
                   </div>
-                  <p style={{color: '#0f766e', fontSize: '14px', marginBottom: '8px'}}>{product.description}</p>
-                  <p style={{color: '#0f766e', fontSize: '13px', marginBottom: '4px'}}>Stock: {product.stock}</p>
-                  <p style={{color: '#0f766e', fontSize: '13px', marginBottom: '16px'}}>Seller: {product.seller_name || 'Unknown'}</p>
+                  <p style={{color: '#0f766e', fontSize: '14px', marginBottom: '8px'}}>
+                    {product.description}
+                  </p>
+                  <p style={{color: '#0f766e', fontSize: '13px', marginBottom: '4px'}}>
+                    Stock: {product.stock}
+                  </p>
+                  <p style={{color: '#0f766e', fontSize: '13px', marginBottom: '16px'}}>
+                    Seller: {product.seller_name || 'Unknown'}
+                  </p>
                   <button
                     onClick={() => addToCart(product)}
                     style={{
@@ -250,7 +374,7 @@ function BuyerDashboard() {
               ))}
               {products.length === 0 && (
                 <p style={{color: '#0f766e', gridColumn: '1 / -1', textAlign: 'center'}}>
-                  No products available. Add some to Firestore!
+                  No products available.
                 </p>
               )}
             </div>
@@ -262,7 +386,9 @@ function BuyerDashboard() {
           <div>
             <h2 style={{color: '#0f172a', marginBottom: '24px'}}>Your Cart</h2>
             {cart.length === 0 ? (
-              <p style={{color: '#0f766e', textAlign: 'center', padding: '40px'}}>Your cart is empty.</p>
+              <p style={{color: '#0f766e', textAlign: 'center', padding: '40px'}}>
+                Your cart is empty.
+              </p>
             ) : (
               <div>
                 {cart.map(item => (
@@ -282,7 +408,7 @@ function BuyerDashboard() {
                     <div>
                       <h3 style={{color: '#0f172a', marginBottom: '8px'}}>{item.name}</h3>
                       <p style={{color: '#0f766e', fontSize: '14px', marginBottom: '4px'}}>
-                        Price: K{item.price} × {item.quantity}
+                        Price: K{item.price} x {item.quantity}
                       </p>
                       <p style={{color: '#0d9488', fontWeight: '600'}}>
                         Subtotal: K{(item.price * item.quantity).toFixed(2)}
@@ -297,11 +423,8 @@ function BuyerDashboard() {
                         background: '#fee2e2',
                         color: '#dc2626',
                         fontWeight: '600',
-                        cursor: 'pointer',
-                        transition: 'all 0.3s ease'
+                        cursor: 'pointer'
                       }}
-                      onMouseOver={(e) => e.target.style.background = '#fecaca'}
-                      onMouseOut={(e) => e.target.style.background = '#fee2e2'}
                     >
                       Remove
                     </button>
@@ -319,7 +442,12 @@ function BuyerDashboard() {
                     Total: K{getTotal()}
                   </h3>
                   <div style={{marginBottom: '16px'}}>
-                    <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', color: '#0f172a'}}>
+                    <label style={{
+                      display: 'block',
+                      marginBottom: '8px',
+                      fontWeight: '600',
+                      color: '#0f172a'
+                    }}>
                       Delivery Address
                     </label>
                     <input
@@ -353,8 +481,6 @@ function BuyerDashboard() {
                       fontSize: '16px',
                       transition: 'all 0.3s ease'
                     }}
-                    onMouseOver={(e) => !loading && (e.target.style.transform = 'translateY(-2px)')}
-                    onMouseOut={(e) => e.target.style.transform = 'translateY(0)'}
                   >
                     {loading ? 'Placing Order...' : `Place Order - K${getTotal()}`}
                   </button>
@@ -368,44 +494,84 @@ function BuyerDashboard() {
         {activeTab === 'orders' && (
           <div>
             <h2 style={{color: '#0f172a', marginBottom: '24px'}}>My Orders</h2>
-            {orders.map(order => (
-              <div
-                key={order.order_id}
-                style={{
-                  background: 'white',
-                  borderRadius: '12px',
-                  padding: '24px',
-                  marginBottom: '16px',
-                  border: '2px solid #d1fae5'
-                }}
-              >
-                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'start'}}>
-                  <div>
-                    <h3 style={{color: '#0f172a', marginBottom: '12px'}}>Order #{order.order_id}</h3>
-                    <p style={{color: '#0f766e', marginBottom: '8px'}}>Total: <span style={{fontWeight: '600', color: '#0d9488'}}>K{order.total_amount}</span></p>
-                    <p style={{color: '#0f766e', marginBottom: '8px'}}>Address: {order.delivery_address}</p>
-                    <p style={{color: '#0f766e', marginBottom: '8px'}}>Status: <span style={{fontWeight: '600', color: '#0d9488'}}>{order.status?.toUpperCase()}</span></p>
-                    {order.created_at && (
-                      <p style={{color: '#0f766e', fontSize: '13px'}}>
-                        Date: {new Date(order.created_at.toDate()).toLocaleDateString()}
-                      </p>
-                    )}
-                  </div>
-                  <span style={{
-                    background: 'linear-gradient(135deg, #0d9488, #10b981)',
-                    color: 'white',
-                    padding: '8px 16px',
-                    borderRadius: '20px',
-                    fontSize: '12px',
-                    fontWeight: '600'
+            {orders.map(order => {
+              const statusStyle = getStatusColor(order.status);
+              return (
+                <div
+                  key={order.order_id}
+                  style={{
+                    background: 'white',
+                    borderRadius: '12px',
+                    padding: '24px',
+                    marginBottom: '16px',
+                    border: '2px solid #d1fae5',
+                    borderLeft: `4px solid ${statusStyle.color}`
+                  }}
+                >
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'start'
                   }}>
-                    {order.status}
-                  </span>
+                    <div>
+                      <h3 style={{color: '#0f172a', marginBottom: '12px'}}>
+                        Order #{order.order_id.slice(0, 8)}...
+                      </h3>
+                      <p style={{color: '#0f766e', marginBottom: '8px'}}>
+                        Total: <span style={{fontWeight: '600', color: '#0d9488'}}>
+                          K{order.total_amount}
+                        </span>
+                      </p>
+                      <p style={{color: '#0f766e', marginBottom: '8px'}}>
+                        Address: {order.delivery_address}
+                      </p>
+                      {order.created_at && (
+                        <p style={{color: '#0f766e', fontSize: '13px'}}>
+                          Date: {new Date(order.created_at.toDate()).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* STATUS BADGE */}
+                    <div style={{textAlign: 'right'}}>
+                      <span style={{
+                        background: statusStyle.bg,
+                        color: statusStyle.color,
+                        padding: '8px 16px',
+                        borderRadius: '20px',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        display: 'block',
+                        marginBottom: '8px'
+                      }}>
+                        {order.status?.toUpperCase().replace(/_/g, ' ')}
+                      </span>
+
+                      {/* STATUS MESSAGE */}
+                      {order.status === 'pending' && (
+                        <p style={{fontSize: '12px', color: '#d97706'}}>
+                          Waiting for seller...
+                        </p>
+                      )}
+                      {order.status === 'confirmed' && (
+                        <p style={{fontSize: '12px', color: '#0d9488', fontWeight: '600'}}>
+                          Seller confirmed your order!
+                        </p>
+                      )}
+                      {order.status === 'delivered' && (
+                        <p style={{fontSize: '12px', color: '#059669', fontWeight: '600'}}>
+                          Order delivered!
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             {orders.length === 0 && (
-              <p style={{color: '#0f766e', textAlign: 'center', padding: '40px'}}>No orders yet.</p>
+              <p style={{color: '#0f766e', textAlign: 'center', padding: '40px'}}>
+                No orders yet.
+              </p>
             )}
           </div>
         )}
