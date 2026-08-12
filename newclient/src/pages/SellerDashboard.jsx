@@ -1,7 +1,7 @@
 /* eslint-disable */
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
-import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 
 function SellerDashboard() {
@@ -16,6 +16,7 @@ function SellerDashboard() {
     name: '', description: '', price: '', stock: '', image_url: ''
   });
   const [editingId, setEditingId] = useState(null);
+  const [newOrderAlert, setNewOrderAlert] = useState(null);
 
   const fetchProducts = useCallback(async () => {
     try {
@@ -23,7 +24,7 @@ function SellerDashboard() {
       const querySnapshot = await getDocs(q);
       const productsList = [];
       querySnapshot.forEach((doc) => {
-        productsList.push({ product_id: doc.id, doc_ref: doc, ...doc.data() });
+        productsList.push({ product_id: doc.id, ...doc.data() });
       });
       setProducts(productsList);
     } catch (err) {
@@ -32,26 +33,36 @@ function SellerDashboard() {
     }
   }, [user?.uid]);
 
-  const fetchOrders = useCallback(async () => {
-    try {
-      const q = query(collection(db, 'orders'), where('seller_id', '==', user?.uid));
-      const querySnapshot = await getDocs(q);
+  // Real-time listener for orders
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    fetchProducts();
+
+    const q = query(collection(db, 'orders'), where('seller_id', '==', user?.uid));
+
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const ordersList = [];
       querySnapshot.forEach((doc) => {
-        ordersList.push({ order_id: doc.id, doc_ref: doc, ...doc.data() });
+        ordersList.push({ order_id: doc.id, ...doc.data() });
       });
-      setOrders(ordersList);
-    } catch (err) {
-      console.error('Error fetching orders:', err);
-    }
-  }, [user?.uid]);
 
-  useEffect(() => {
-    if (user?.uid) {
-      fetchProducts();
-      fetchOrders();
-    }
-  }, [user?.uid, fetchProducts, fetchOrders]);
+      // Alert seller when new order arrives
+      querySnapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const order = change.doc.data();
+          if (order.status === 'pending') {
+            setNewOrderAlert(`New order received! Total: K${order.total_amount}`);
+            setTimeout(() => setNewOrderAlert(null), 6000);
+          }
+        }
+      });
+
+      setOrders(ordersList);
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid]);
 
   const showMessage = (msg, type = 'success') => {
     setMessage(msg);
@@ -81,11 +92,12 @@ function SellerDashboard() {
           image_url: form.image_url,
           updated_at: serverTimestamp()
         });
-        showMessage('✅ Product updated successfully!');
+        showMessage('Product updated successfully!');
         setEditingId(null);
       } else {
         await addDoc(collection(db, 'products'), {
           seller_id: user?.uid,
+          seller_name: user?.name || user?.displayName || 'Unknown Seller',
           name: form.name,
           description: form.description,
           price: parseFloat(form.price),
@@ -93,7 +105,7 @@ function SellerDashboard() {
           image_url: form.image_url,
           created_at: serverTimestamp()
         });
-        showMessage('✅ Product added successfully!');
+        showMessage('Product added successfully!');
       }
       setForm({ name: '', description: '', price: '', stock: '', image_url: '' });
       fetchProducts();
@@ -123,18 +135,25 @@ function SellerDashboard() {
     try {
       await deleteDoc(doc(db, 'products', id));
       setProducts(prev => prev.filter(p => p.product_id !== id));
-      showMessage('✅ Product deleted successfully!');
+      showMessage('Product deleted successfully!');
     } catch (err) {
       console.error('Delete error:', err);
       showMessage('Failed to delete product', 'error');
     }
   };
 
-  const updateOrderStatus = async (order_id, status, docRef) => {
+  // FIXED: Use doc() directly with order_id
+  const updateOrderStatus = async (order_id, status) => {
     try {
-      await updateDoc(docRef, { status });
-      setOrders(prev => prev.map(o => o.order_id === order_id ? { ...o, status } : o));
-      showMessage('✅ Order status updated!');
+      const orderRef = doc(db, 'orders', order_id);
+      await updateDoc(orderRef, {
+        status: status,
+        updated_at: serverTimestamp()
+      });
+      setOrders(prev => prev.map(o =>
+        o.order_id === order_id ? { ...o, status } : o
+      ));
+      showMessage(`Order ${status === 'confirmed' ? 'confirmed' : 'updated'} successfully!`);
     } catch (err) {
       console.error('Update error:', err);
       showMessage('Failed to update order', 'error');
@@ -146,8 +165,67 @@ function SellerDashboard() {
     setEditingId(null);
   };
 
+  const getStatusColor = (status) => {
+    if (status === 'pending') return { bg: '#fef3c7', color: '#d97706' };
+    if (status === 'confirmed') return { bg: '#d1fae5', color: '#0d9488' };
+    if (status === 'cancelled') return { bg: '#fee2e2', color: '#dc2626' };
+    return { bg: '#d1fae5', color: '#0d9488' };
+  };
+
   return (
     <div style={{minHeight: '100vh', background: '#f0fdfa', fontFamily: 'Inter, sans-serif'}}>
+
+      {/* NEW ORDER ALERT */}
+      {newOrderAlert && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          right: '20px',
+          zIndex: 9999,
+          background: 'linear-gradient(135deg, #0d9488, #10b981)',
+          color: 'white',
+          padding: '16px 24px',
+          borderRadius: '16px',
+          boxShadow: '0 8px 30px rgba(0,0,0,0.2)',
+          maxWidth: '350px',
+          fontWeight: '600',
+          fontSize: '14px',
+          animation: 'slideIn 0.5s ease-out',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px'
+        }}>
+          <span style={{fontSize: '20px'}}>!</span>
+          <div>
+            <p style={{margin: 0, fontWeight: '700', marginBottom: '4px'}}>New Order!</p>
+            <p style={{margin: 0, fontSize: '13px', opacity: 0.9}}>{newOrderAlert}</p>
+          </div>
+          <button
+            onClick={() => setNewOrderAlert(null)}
+            style={{
+              background: 'rgba(255,255,255,0.2)',
+              border: 'none',
+              color: 'white',
+              cursor: 'pointer',
+              borderRadius: '50%',
+              width: '24px',
+              height: '24px',
+              fontWeight: '700',
+              marginLeft: 'auto'
+            }}
+          >
+            x
+          </button>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes slideIn {
+          from { opacity: 0; transform: translateX(100px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+      `}</style>
+
       {/* NAVBAR */}
       <div style={{
         background: 'white',
@@ -168,11 +246,11 @@ function SellerDashboard() {
           WebkitTextFillColor: 'transparent',
           margin: 0
         }}>
-          🛵 ZUT Deliver
+          ZUT Deliver
         </h1>
         <div style={{display: 'flex', gap: '20px', alignItems: 'center'}}>
           <span style={{color: '#0f766e', fontWeight: '600'}}>
-            👤 {user?.name} (Seller)
+            {user?.name || user?.displayName || 'Seller'} (Seller)
           </span>
           <button
             onClick={logout}
@@ -186,8 +264,6 @@ function SellerDashboard() {
               cursor: 'pointer',
               transition: 'all 0.3s ease'
             }}
-            onMouseOver={(e) => e.target.style.opacity = '0.9'}
-            onMouseOut={(e) => e.target.style.opacity = '1'}
           >
             Logout
           </button>
@@ -210,11 +286,17 @@ function SellerDashboard() {
         )}
 
         {/* STATS */}
-        <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '32px'}}>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: '16px',
+          marginBottom: '32px'
+        }}>
           {[
             {label: 'Total Products', value: products.length},
             {label: 'Total Orders', value: orders.length},
-            {label: 'Pending Orders', value: orders.filter(o => o.status === 'pending').length}
+            {label: 'Pending Orders', value: orders.filter(o => o.status === 'pending').length},
+            {label: 'Confirmed Orders', value: orders.filter(o => o.status === 'confirmed').length}
           ].map((stat, i) => (
             <div key={i} style={{
               background: 'linear-gradient(135deg, #d1fae5, #a7f3d0)',
@@ -223,18 +305,27 @@ function SellerDashboard() {
               textAlign: 'center',
               border: '2px solid #0d9488'
             }}>
-              <h3 style={{fontSize: '32px', fontWeight: '800', color: '#0d9488', margin: '0 0 8px 0'}}>{stat.value}</h3>
+              <h3 style={{fontSize: '32px', fontWeight: '800', color: '#0d9488', margin: '0 0 8px 0'}}>
+                {stat.value}
+              </h3>
               <p style={{color: '#0f766e', margin: 0}}>{stat.label}</p>
             </div>
           ))}
         </div>
 
         {/* TABS */}
-        <div style={{display: 'flex', gap: '12px', marginBottom: '32px', borderBottom: '2px solid #d1fae5', paddingBottom: '16px', flexWrap: 'wrap'}}>
+        <div style={{
+          display: 'flex',
+          gap: '12px',
+          marginBottom: '32px',
+          borderBottom: '2px solid #d1fae5',
+          paddingBottom: '16px',
+          flexWrap: 'wrap'
+        }}>
           {[
-            {id: 'products', label: `📦 My Products (${products.length})`},
-            {id: 'add', label: editingId ? '✏️ Edit Product' : '➕ Add New Product'},
-            {id: 'orders', label: `📋 Orders (${orders.length})`}
+            {id: 'products', label: `My Products (${products.length})`},
+            {id: 'add', label: editingId ? 'Edit Product' : 'Add New Product'},
+            {id: 'orders', label: `Orders (${orders.length})`}
           ].map(tab => (
             <button
               key={tab.id}
@@ -246,14 +337,37 @@ function SellerDashboard() {
                 padding: '12px 24px',
                 borderRadius: '12px',
                 border: 'none',
-                background: activeTab === tab.id ? 'linear-gradient(135deg, #0d9488, #10b981)' : 'white',
+                background: activeTab === tab.id
+                  ? 'linear-gradient(135deg, #0d9488, #10b981)'
+                  : 'white',
                 color: activeTab === tab.id ? 'white' : '#0f766e',
                 fontWeight: '600',
                 cursor: 'pointer',
-                transition: 'all 0.3s ease'
+                transition: 'all 0.3s ease',
+                position: 'relative'
               }}
             >
               {tab.label}
+              {/* Badge for pending orders */}
+              {tab.id === 'orders' && orders.filter(o => o.status === 'pending').length > 0 && (
+                <span style={{
+                  position: 'absolute',
+                  top: '-8px',
+                  right: '-8px',
+                  background: '#ef4444',
+                  color: 'white',
+                  borderRadius: '50%',
+                  width: '20px',
+                  height: '20px',
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  {orders.filter(o => o.status === 'pending').length}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -270,7 +384,9 @@ function SellerDashboard() {
                 textAlign: 'center',
                 border: '2px solid #d1fae5'
               }}>
-                <p style={{fontSize: '18px', color: '#0f766e', marginBottom: '16px'}}>No products yet!</p>
+                <p style={{fontSize: '18px', color: '#0f766e', marginBottom: '16px'}}>
+                  No products yet!
+                </p>
                 <button
                   onClick={() => setActiveTab('add')}
                   style={{
@@ -280,17 +396,18 @@ function SellerDashboard() {
                     background: 'linear-gradient(135deg, #0d9488, #10b981)',
                     color: 'white',
                     fontWeight: '600',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease'
+                    cursor: 'pointer'
                   }}
-                  onMouseOver={(e) => e.target.style.transform = 'translateY(-2px)'}
-                  onMouseOut={(e) => e.target.style.transform = 'translateY(0)'}
                 >
                   Add Your First Product
                 </button>
               </div>
             ) : (
-              <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '24px'}}>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                gap: '24px'
+              }}>
                 {products.map(product => (
                   <div
                     key={product.product_id}
@@ -312,12 +429,19 @@ function SellerDashboard() {
                     }}
                   >
                     <h3 style={{color: '#0f172a', marginBottom: '8px'}}>{product.name}</h3>
-                    <div style={{fontSize: '24px', fontWeight: '800', color: '#0d9488', marginBottom: '12px'}}>
+                    <div style={{
+                      fontSize: '24px',
+                      fontWeight: '800',
+                      color: '#0d9488',
+                      marginBottom: '12px'
+                    }}>
                       K{product.price}
                     </div>
-                    <p style={{color: '#0f766e', fontSize: '14px', marginBottom: '12px'}}>{product.description}</p>
+                    <p style={{color: '#0f766e', fontSize: '14px', marginBottom: '12px'}}>
+                      {product.description}
+                    </p>
                     <p style={{color: '#0f766e', fontSize: '13px', marginBottom: '16px'}}>
-                      📦 Stock: <strong>{product.stock}</strong>
+                      Stock: <strong>{product.stock}</strong>
                     </p>
                     <div style={{display: 'flex', gap: '8px'}}>
                       <button
@@ -330,11 +454,8 @@ function SellerDashboard() {
                           background: 'linear-gradient(135deg, #0d9488, #10b981)',
                           color: 'white',
                           fontWeight: '600',
-                          cursor: 'pointer',
-                          transition: 'all 0.3s ease'
+                          cursor: 'pointer'
                         }}
-                        onMouseOver={(e) => e.target.style.transform = 'translateY(-2px)'}
-                        onMouseOut={(e) => e.target.style.transform = 'translateY(0)'}
                       >
                         Edit
                       </button>
@@ -348,11 +469,8 @@ function SellerDashboard() {
                           background: '#fee2e2',
                           color: '#dc2626',
                           fontWeight: '600',
-                          cursor: 'pointer',
-                          transition: 'all 0.3s ease'
+                          cursor: 'pointer'
                         }}
-                        onMouseOver={(e) => e.target.style.background = '#fecaca'}
-                        onMouseOut={(e) => e.target.style.background = '#fee2e2'}
                       >
                         Delete
                       </button>
@@ -373,10 +491,15 @@ function SellerDashboard() {
             border: '2px solid #d1fae5'
           }}>
             <h2 style={{color: '#0f172a', marginBottom: '24px'}}>
-              {editingId ? '✏️ Edit Product' : '➕ Add New Product'}
+              {editingId ? 'Edit Product' : 'Add New Product'}
             </h2>
 
-            <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px', marginBottom: '16px'}}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+              gap: '16px',
+              marginBottom: '16px'
+            }}>
               <div>
                 <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', color: '#0f172a'}}>
                   Product Name *
@@ -441,7 +564,12 @@ function SellerDashboard() {
               />
             </div>
 
-            <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px', marginBottom: '24px'}}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+              gap: '16px',
+              marginBottom: '24px'
+            }}>
               <div>
                 <label style={{display: 'block', marginBottom: '8px', fontWeight: '600', color: '#0f172a'}}>
                   Stock Quantity *
@@ -500,10 +628,8 @@ function SellerDashboard() {
                   opacity: loading ? 0.7 : 1,
                   transition: 'all 0.3s ease'
                 }}
-                onMouseOver={(e) => !loading && (e.target.style.transform = 'translateY(-2px)')}
-                onMouseOut={(e) => e.target.style.transform = 'translateY(0)'}
               >
-                {loading ? 'Saving...' : editingId ? '💾 Save Changes' : '➕ Add Product'}
+                {loading ? 'Saving...' : editingId ? 'Save Changes' : 'Add Product'}
               </button>
               <button
                 onClick={() => {
@@ -517,11 +643,8 @@ function SellerDashboard() {
                   background: 'white',
                   color: '#0f766e',
                   fontWeight: '600',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease'
+                  cursor: 'pointer'
                 }}
-                onMouseOver={(e) => e.target.style.background = '#f0fdfa'}
-                onMouseOut={(e) => e.target.style.background = 'white'}
               >
                 Cancel
               </button>
@@ -544,63 +667,125 @@ function SellerDashboard() {
                 <p style={{color: '#0f766e'}}>No orders yet!</p>
               </div>
             ) : (
-              orders.map(order => (
-                <div
-                  key={order.order_id}
-                  style={{
-                    background: 'white',
-                    borderRadius: '12px',
-                    padding: '24px',
-                    marginBottom: '16px',
-                    border: '2px solid #d1fae5'
-                  }}
-                >
-                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '16px'}}>
-                    <div>
-                      <h3 style={{color: '#0f172a', marginBottom: '12px'}}>Order #{order.order_id}</h3>
-                      <p style={{color: '#0f766e', marginBottom: '8px'}}>👤 Customer: <strong>{order.buyer_name || 'Unknown'}</strong></p>
-                      <p style={{color: '#0f766e', marginBottom: '8px'}}>📞 Phone: {order.buyer_phone || 'N/A'}</p>
-                      <p style={{color: '#0f766e', marginBottom: '8px'}}>💰 Total: <strong style={{color: '#0d9488'}}>K{order.total_amount}</strong></p>
-                      <p style={{color: '#0f766e', marginBottom: '8px'}}>📍 Address: {order.delivery_address}</p>
-                      {order.created_at && (
-                        <p style={{color: '#0f766e', fontSize: '13px'}}>
-                          📅 Date: {new Date(order.created_at.toDate()).toLocaleDateString()}
-                        </p>
-                      )}
-                    </div>
-                    <span style={{
-                      background: 'linear-gradient(135deg, #0d9488, #10b981)',
-                      color: 'white',
-                      padding: '8px 16px',
-                      borderRadius: '20px',
-                      fontSize: '12px',
-                      fontWeight: '600'
+              orders.map(order => {
+                const statusStyle = getStatusColor(order.status);
+                return (
+                  <div
+                    key={order.order_id}
+                    style={{
+                      background: 'white',
+                      borderRadius: '12px',
+                      padding: '24px',
+                      marginBottom: '16px',
+                      border: '2px solid #d1fae5',
+                      borderLeft: `4px solid ${statusStyle.color}`
+                    }}
+                  >
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'start',
+                      marginBottom: '16px',
+                      flexWrap: 'wrap',
+                      gap: '12px'
                     }}>
-                      {order.status}
-                    </span>
-                  </div>
+                      <div>
+                        <h3 style={{color: '#0f172a', marginBottom: '12px'}}>
+                          Order #{order.order_id.slice(0, 8)}...
+                        </h3>
+                        <p style={{color: '#0f766e', marginBottom: '8px'}}>
+                          Total: <strong style={{color: '#0d9488'}}>K{order.total_amount}</strong>
+                        </p>
+                        <p style={{color: '#0f766e', marginBottom: '8px'}}>
+                          Address: {order.delivery_address}
+                        </p>
+                        {order.created_at && (
+                          <p style={{color: '#0f766e', fontSize: '13px'}}>
+                            Date: {new Date(order.created_at.toDate()).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
 
-                  {order.status === 'pending' && (
-                    <button
-                      onClick={() => updateOrderStatus(order.order_id, 'confirmed', order.doc_ref)}
-                      style={{
-                        padding: '10px 20px',
+                      <span style={{
+                        background: statusStyle.bg,
+                        color: statusStyle.color,
+                        padding: '8px 16px',
+                        borderRadius: '20px',
+                        fontSize: '12px',
+                        fontWeight: '700'
+                      }}>
+                        {order.status?.toUpperCase()}
+                      </span>
+                    </div>
+
+                    {/* CONFIRM BUTTON - only for pending orders */}
+                    {order.status === 'pending' && (
+                      <div style={{
+                        background: '#f0fdfa',
                         borderRadius: '8px',
-                        border: 'none',
-                        background: 'linear-gradient(135deg, #0d9488, #10b981)',
-                        color: 'white',
+                        padding: '16px',
+                        border: '1px solid #d1fae5'
+                      }}>
+                        <p style={{
+                          color: '#0f766e',
+                          fontSize: '14px',
+                          marginBottom: '12px',
+                          fontWeight: '500'
+                        }}>
+                          Confirm this order to notify the buyer!
+                        </p>
+                        <div style={{display: 'flex', gap: '8px'}}>
+                          <button
+                            onClick={() => updateOrderStatus(order.order_id, 'confirmed')}
+                            style={{
+                              padding: '10px 20px',
+                              borderRadius: '8px',
+                              border: 'none',
+                              background: 'linear-gradient(135deg, #0d9488, #10b981)',
+                              color: 'white',
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                              transition: 'all 0.3s ease'
+                            }}
+                            onMouseOver={(e) => e.target.style.transform = 'translateY(-2px)'}
+                            onMouseOut={(e) => e.target.style.transform = 'translateY(0)'}
+                          >
+                            Confirm Order
+                          </button>
+                          <button
+                            onClick={() => updateOrderStatus(order.order_id, 'cancelled')}
+                            style={{
+                              padding: '10px 20px',
+                              borderRadius: '8px',
+                              border: 'none',
+                              background: '#fee2e2',
+                              color: '#dc2626',
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                              transition: 'all 0.3s ease'
+                            }}
+                          >
+                            Cancel Order
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {order.status === 'confirmed' && (
+                      <div style={{
+                        background: '#d1fae5',
+                        borderRadius: '8px',
+                        padding: '12px 16px',
+                        color: '#0d9488',
                         fontWeight: '600',
-                        cursor: 'pointer',
-                        transition: 'all 0.3s ease'
-                      }}
-                      onMouseOver={(e) => e.target.style.transform = 'translateY(-2px)'}
-                      onMouseOut={(e) => e.target.style.transform = 'translateY(0)'}
-                    >
-                      ✓ Confirm Order
-                    </button>
-                  )}
-                </div>
-              ))
+                        fontSize: '14px'
+                      }}>
+                        Order confirmed! Buyer has been notified.
+                      </div>
+                    )}
+                  </div>
+                );
+              })
             )}
           </div>
         )}
