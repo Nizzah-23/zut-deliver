@@ -114,20 +114,25 @@ function BuyerDashboard() {
     try {
       const seller_id = cart[0].seller_id;
       const items = cart.map(i => ({
-        product_id: i.product_id,
-        quantity: i.quantity,
-        price: i.price
-      }));
+  product_id: i.product_id,
+  name: i.name,
+  quantity: i.quantity,
+  price: i.price
+}));
+      
 
       await addDoc(collection(db, 'orders'), {
-        buyer_id: user?.uid,
-        seller_id: seller_id,
-        items: items,
-        total_amount: parseFloat(getTotal()),
-        delivery_address: deliveryAddress,
-        status: 'pending',
-        created_at: serverTimestamp()
-      });
+  buyer_id: user?.uid,
+  buyer_name: user?.name || user?.displayName || 'Unknown',
+  buyer_phone: user?.phone || 'N/A',
+  seller_id: seller_id,
+  items: items,
+  total_amount: parseFloat(getTotal()),
+  delivery_address: deliveryAddress,
+  status: 'pending',
+  created_at: serverTimestamp()
+});
+      
 
       setMessage('Order placed successfully!');
       setCart([]);
