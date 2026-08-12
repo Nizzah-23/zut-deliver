@@ -151,7 +151,7 @@ function SellerDashboard() {
         updated_at: serverTimestamp()
       });
       setOrders(prev => prev.map(o =>
-        o.order_id === order_id ? { ...o, status } : o
+        Order #{orders.indexOf(order) + 1}
       ));
       showMessage(`Order ${status === 'confirmed' ? 'confirmed' : 'updated'} successfully!`);
     } catch (err) {
