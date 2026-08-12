@@ -13,7 +13,18 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
-
+  const [message, setMessage] = useState('');
+const handleResetPassword = async () => {
+  if (!email) return setError('Enter your email first!');
+  try {
+    const { sendPasswordResetEmail } = await import('firebase/auth');
+    await sendPasswordResetEmail(auth, email);
+    setError('');
+    setMessage('Password reset email sent! Check your inbox.');
+  } catch (err) {
+    setError('Failed to send reset email. Check your email address.');
+  }
+};
   const handleLogin = async () => {
     setError('');
     if (!email || !password) {
@@ -221,6 +232,37 @@ const Login = () => {
           fontSize: '14px',
           color: '#0f766e'
         }}>
+        {message && (
+  <div style={{
+    background: '#d1fae5',
+    color: '#0d9488',
+    padding: '12px 16px',
+    borderRadius: '12px',
+    marginBottom: '16px',
+    fontSize: '14px',
+    fontWeight: '500'
+  }}>
+    {message}
+  </div>
+)}
+
+<div style={{
+  textAlign: 'center',
+  marginBottom: '16px',
+  fontSize: '14px'
+}}>
+  <span
+    onClick={handleResetPassword}
+    style={{
+      color: '#0d9488',
+      cursor: 'pointer',
+      textDecoration: 'underline',
+      fontWeight: '600'
+    }}
+  >
+    Forgot Password?
+  </span>
+</div>
           Don't have an account?{' '}
           <span
             onClick={() => navigate('/register')}
