@@ -20,6 +20,6 @@
   "author": "Nizzah",
   "license": "MIT",
   "dependencies": {
-    "firebase": "^12.16.0"
+    "firebase": "^12.17.1"
   }
 }
