@@ -151,7 +151,7 @@ function SellerDashboard() {
         updated_at: serverTimestamp()
       });
       setOrders(prev => prev.map(o =>
-        Order #{orders.indexOf(order) + 1}
+        o.order_id === order_id ? { ...o, status } : o
       ));
       showMessage(`Order ${status === 'confirmed' ? 'confirmed' : 'updated'} successfully!`);
     } catch (err) {
@@ -691,7 +691,7 @@ function SellerDashboard() {
                     }}>
                       <div>
                         <h3 style={{color: '#0f172a', marginBottom: '12px'}}>
-                          Order #{order.order_id.slice(0, 8)}...
+                          Order #{orders.indexOf(order) + 1}
                         </h3>
                         <p style={{color: '#0f766e', marginBottom: '8px'}}>
                           Total: <strong style={{color: '#0d9488'}}>K{order.total_amount}</strong>
