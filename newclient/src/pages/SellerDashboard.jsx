@@ -697,6 +697,37 @@ function SellerDashboard() {
                           Total: <strong style={{color: '#0d9488'}}>K{order.total_amount}</strong>
                         </p>
                         <p style={{color: '#0f766e', marginBottom: '8px'}}>
+  Buyer: <strong style={{color: '#0f172a'}}>{order.buyer_name || 'Unknown'}</strong>
+</p>
+
+{/* ITEMS PURCHASED */}
+{order.items && order.items.length > 0 && (
+  <div style={{
+    background: '#f0fdfa',
+    borderRadius: '8px',
+    padding: '12px',
+    marginBottom: '8px',
+    border: '1px solid #d1fae5'
+  }}>
+    <p style={{fontWeight: '600', color: '#0f766e', marginBottom: '8px'}}>
+      Items Ordered:
+    </p>
+    {order.items.map((item, index) => (
+      <div key={index} style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        marginBottom: '4px',
+        fontSize: '14px'
+      }}>
+        <span style={{color: '#0f172a'}}>{item.name || `Product ID: ${item.product_id}`}</span>
+        <span style={{color: '#0d9488', fontWeight: '600'}}>
+          x{item.quantity} — K{item.price * item.quantity}
+        </span>
+      </div>
+    ))}
+  </div>
+)}
+                        <p style={{color: '#0f766e', marginBottom: '8px'}}>
                           Address: {order.delivery_address}
                         </p>
                         {order.created_at && (
