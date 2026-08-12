@@ -127,7 +127,7 @@ function AdminDashboard() {
   return (
     <div className="dashboard">
       <div className="navbar">
-        <h1>🛵 ZUT Deliver — Admin Panel</h1>
+        <h1> ZUT Deliver — Admin Panel</h1>
         <div className="navbar-right">
           <span>👑 {user?.name} (Admin)</span>
           <button className="btn-danger" onClick={logout}>Logout</button>
