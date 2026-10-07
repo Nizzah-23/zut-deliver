@@ -1,3 +1,4 @@
+import { signOut } from 'aws-amplify/auth';
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useState, useContext } from 'react';
 
@@ -19,10 +20,12 @@ function AuthProvider({ children }) {
   }
 
   function logout() {
-    setUser(null);
-    setToken(null);
-    localStorage.removeItem('user');
-    localStorage.removeItem('token');
+  signOut().catch(() => {});
+  setUser(null);
+  setToken(null);
+  localStorage.removeItem('user');
+  localStorage.removeItem('token');
+
   }
 
   return (

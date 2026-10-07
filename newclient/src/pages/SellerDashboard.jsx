@@ -1,8 +1,10 @@
 /* eslint-disable */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../AuthContext';
-import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, onSnapshot } from 'firebase/firestore';
-import { db } from '../firebase';
+import {
+  getMyProducts, createProduct, updateProduct, deleteProduct,
+  getMyOrders, updateOrder,
+} from '../api';
 
 function SellerDashboard() {
   const { user, logout } = useAuth();
@@ -18,57 +20,54 @@ function SellerDashboard() {
   const [editingId, setEditingId] = useState(null);
   const [newOrderAlert, setNewOrderAlert] = useState(null);
 
-  const fetchProducts = useCallback(async () => {
-    try {
-      const q = query(collection(db, 'products'), where('seller_id', '==', user?.uid));
-      const querySnapshot = await getDocs(q);
-      const productsList = [];
-      querySnapshot.forEach((doc) => {
-        productsList.push({ product_id: doc.id, ...doc.data() });
-      });
-      setProducts(productsList);
-    } catch (err) {
-      console.error('Error fetching products:', err);
-      showMessage('Failed to load products', 'error');
-    }
-  }, [user?.uid]);
-
-  // Real-time listener for orders
-  useEffect(() => {
-    if (!user?.uid) return;
-
-    fetchProducts();
-
-    const q = query(collection(db, 'orders'), where('seller_id', '==', user?.uid));
-
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const ordersList = [];
-      querySnapshot.forEach((doc) => {
-        ordersList.push({ order_id: doc.id, ...doc.data() });
-      });
-
-      // Alert seller when new order arrives
-      querySnapshot.docChanges().forEach((change) => {
-        if (change.type === 'added') {
-          const order = change.doc.data();
-          if (order.status === 'pending') {
-            setNewOrderAlert(`New order received! Total: K${order.total_amount}`);
-            setTimeout(() => setNewOrderAlert(null), 6000);
-          }
-        }
-      });
-
-      setOrders(ordersList);
-    });
-
-    return () => unsubscribe();
-  }, [user?.uid]);
+  const seenOrderIds = useRef(new Set());
+  const firstLoad = useRef(true);
 
   const showMessage = (msg, type = 'success') => {
     setMessage(msg);
     setMsgType(type);
     setTimeout(() => setMessage(''), 4000);
   };
+
+  const fetchProducts = useCallback(async () => {
+    try {
+      setProducts(await getMyProducts());
+    } catch (err) {
+      console.error('Error fetching products:', err);
+      showMessage('Failed to load products', 'error');
+    }
+  }, []);
+
+  // Replaces the Firestore real-time listener: re-checks orders every 5 seconds
+  const loadOrders = useCallback(async () => {
+    try {
+      const list = await getMyOrders();
+
+      if (!firstLoad.current) {
+        const fresh = list.find(
+          (o) => !seenOrderIds.current.has(o.order_id) && o.status === 'pending'
+        );
+        if (fresh) {
+          setNewOrderAlert(`New order received! Total: K${fresh.total_amount}`);
+          setTimeout(() => setNewOrderAlert(null), 6000);
+        }
+      }
+
+      seenOrderIds.current = new Set(list.map((o) => o.order_id));
+      firstLoad.current = false;
+      setOrders(list);
+    } catch (err) {
+      console.error('Error loading orders:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    fetchProducts();
+    loadOrders();
+    const timer = setInterval(loadOrders, 5000);
+    return () => clearInterval(timer);
+  }, [user?.uid]);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -82,29 +81,20 @@ function SellerDashboard() {
 
     setLoading(true);
     try {
+      const payload = {
+        name: form.name,
+        description: form.description,
+        price: parseFloat(form.price),
+        stock: parseFloat(form.stock),
+        image_url: form.image_url,
+      };
+
       if (editingId) {
-        const productRef = doc(db, 'products', editingId);
-        await updateDoc(productRef, {
-          name: form.name,
-          description: form.description,
-          price: parseFloat(form.price),
-          stock: parseFloat(form.stock),
-          image_url: form.image_url,
-          updated_at: serverTimestamp()
-        });
+        await updateProduct(editingId, payload);
         showMessage('Product updated successfully!');
         setEditingId(null);
       } else {
-        await addDoc(collection(db, 'products'), {
-          seller_id: user?.uid,
-          seller_name: user?.name || user?.displayName || 'Unknown Seller',
-          name: form.name,
-          description: form.description,
-          price: parseFloat(form.price),
-          stock: parseFloat(form.stock),
-          image_url: form.image_url,
-          created_at: serverTimestamp()
-        });
+        await createProduct(payload);
         showMessage('Product added successfully!');
       }
       setForm({ name: '', description: '', price: '', stock: '', image_url: '' });
@@ -112,7 +102,7 @@ function SellerDashboard() {
       setActiveTab('products');
     } catch (err) {
       console.error('Error:', err);
-      showMessage('Failed to save product', 'error');
+      showMessage(err.message || 'Failed to save product', 'error');
     }
     setLoading(false);
   };
@@ -133,30 +123,25 @@ function SellerDashboard() {
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this product?')) return;
     try {
-      await deleteDoc(doc(db, 'products', id));
+      await deleteProduct(id);
       setProducts(prev => prev.filter(p => p.product_id !== id));
       showMessage('Product deleted successfully!');
     } catch (err) {
       console.error('Delete error:', err);
-      showMessage('Failed to delete product', 'error');
+      showMessage(err.message || 'Failed to delete product', 'error');
     }
   };
 
-  // FIXED: Use doc() directly with order_id
   const updateOrderStatus = async (order_id, status) => {
     try {
-      const orderRef = doc(db, 'orders', order_id);
-      await updateDoc(orderRef, {
-        status: status,
-        updated_at: serverTimestamp()
-      });
+      await updateOrder(order_id, { status });
       setOrders(prev => prev.map(o =>
         o.order_id === order_id ? { ...o, status } : o
       ));
       showMessage(`Order ${status === 'confirmed' ? 'confirmed' : 'updated'} successfully!`);
     } catch (err) {
       console.error('Update error:', err);
-      showMessage('Failed to update order', 'error');
+      showMessage(err.message || 'Failed to update order', 'error');
     }
   };
 
@@ -171,7 +156,6 @@ function SellerDashboard() {
     if (status === 'cancelled') return { bg: '#fee2e2', color: '#dc2626' };
     return { bg: '#d1fae5', color: '#0d9488' };
   };
-
   return (
     <div style={{minHeight: '100vh', background: '#f0fdfa', fontFamily: 'Inter, sans-serif'}}>
 
@@ -732,7 +716,7 @@ function SellerDashboard() {
                         </p>
                         {order.created_at && (
                           <p style={{color: '#0f766e', fontSize: '13px'}}>
-                            Date: {new Date(order.created_at.toDate()).toLocaleDateString()}
+                            Date: {new Date(order.created_at).toLocaleDateString()}
                           </p>
                         )}
                       </div>

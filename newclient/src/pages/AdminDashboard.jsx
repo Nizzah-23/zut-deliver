@@ -1,8 +1,14 @@
 /* eslint-disable */
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
-import { collection, getDocs, deleteDoc, updateDoc, doc } from 'firebase/firestore';
-import { db } from '../firebase';
+import {
+  adminGetUsers,
+  adminGetOrders,
+  adminGetProducts,
+  adminSetBan,
+  adminDeleteUser,
+  deleteProduct,
+} from '../api';
 
 function AdminDashboard() {
   const { user, logout } = useAuth();
@@ -23,12 +29,7 @@ function AdminDashboard() {
 
   const fetchUsers = useCallback(async () => {
     try {
-      const querySnapshot = await getDocs(collection(db, 'users'));
-      const usersList = [];
-      querySnapshot.forEach((doc) => {
-        usersList.push({ user_id: doc.id, ...doc.data() });
-      });
-      setUsers(usersList);
+      setUsers(await adminGetUsers());
     } catch (err) {
       showMessage('Failed to load users', 'error');
     }
@@ -36,12 +37,7 @@ function AdminDashboard() {
 
   const fetchOrders = useCallback(async () => {
     try {
-      const querySnapshot = await getDocs(collection(db, 'orders'));
-      const ordersList = [];
-      querySnapshot.forEach((doc) => {
-        ordersList.push({ order_id: doc.id, ...doc.data() });
-      });
-      setOrders(ordersList);
+      setOrders(await adminGetOrders());
     } catch (err) {
       showMessage('Failed to load orders', 'error');
     }
@@ -49,12 +45,7 @@ function AdminDashboard() {
 
   const fetchProducts = useCallback(async () => {
     try {
-      const querySnapshot = await getDocs(collection(db, 'products'));
-      const productsList = [];
-      querySnapshot.forEach((doc) => {
-        productsList.push({ product_id: doc.id, ...doc.data() });
-      });
-      setProducts(productsList);
+      setProducts(await adminGetProducts());
     } catch (err) {
       showMessage('Failed to load products', 'error');
     }
@@ -70,33 +61,33 @@ function AdminDashboard() {
     const action = is_banned ? 'ban' : 'unban';
     if (!window.confirm(`Are you sure you want to ${action} this user?`)) return;
     try {
-      await updateDoc(doc(db, 'users', id), { is_banned });
+      await adminSetBan(id, is_banned);
       setUsers(prev => prev.map(u => u.user_id === id ? { ...u, is_banned } : u));
       showMessage(`User ${action}ned successfully!`);
     } catch (err) {
-      showMessage('Failed to update user', 'error');
+      showMessage(err.message || 'Failed to update user', 'error');
     }
   };
 
   const handleDeleteUser = async (id, name) => {
     if (!window.confirm(`Are you sure you want to permanently delete ${name}?`)) return;
     try {
-      await deleteDoc(doc(db, 'users', id));
+      await adminDeleteUser(id);
       setUsers(prev => prev.filter(u => u.user_id !== id));
       showMessage('User deleted successfully!');
     } catch (err) {
-      showMessage('Failed to delete user', 'error');
+      showMessage(err.message || 'Failed to delete user', 'error');
     }
   };
 
   const handleDeleteProduct = async (id) => {
     if (!window.confirm('Are you sure you want to delete this product?')) return;
     try {
-      await deleteDoc(doc(db, 'products', id));
+      await deleteProduct(id);
       setProducts(prev => prev.filter(p => p.product_id !== id));
       showMessage('Product deleted successfully!');
     } catch (err) {
-      showMessage('Failed to delete product', 'error');
+      showMessage(err.message || 'Failed to delete product', 'error');
     }
   };
 
@@ -127,7 +118,6 @@ function AdminDashboard() {
       .reduce((sum, o) => sum + (o.total_amount || 0), 0),
     banned_users: users.filter(u => u.is_banned).length
   };
-
   return (
     <div style={{minHeight: '100vh', background: '#f0fdfa', fontFamily: 'Inter, sans-serif'}}>
       {/* NAVBAR */}
@@ -475,7 +465,7 @@ function AdminDashboard() {
                     </p>
                     {order.created_at && (
                       <p style={{color: '#0f766e', fontSize: '13px'}}>
-                        Date: {new Date(order.created_at.toDate()).toLocaleDateString()}
+                        Date: {new Date(order.created_at).toLocaleDateString()}
                       </p>
                     )}
                   </div>

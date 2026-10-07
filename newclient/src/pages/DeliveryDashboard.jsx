@@ -1,8 +1,12 @@
 /* eslint-disable */
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
-import { collection, query, where, getDocs, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase';
+import {
+  getMyOrders,
+  getAvailableOrders,
+  acceptOrder as apiAcceptOrder,
+  updateOrder,
+} from '../api';
 
 function DeliveryDashboard() {
   const { user, logout } = useAuth();
@@ -12,97 +16,74 @@ function DeliveryDashboard() {
   const [message, setMessage] = useState('');
   const [locationInput, setLocationInput] = useState('');
 
-  // Fetch my orders
   const fetchMyOrders = useCallback(async () => {
     try {
-      const q = query(collection(db, 'orders'), where('delivery_id', '==', user?.uid));
-      const querySnapshot = await getDocs(q);
-      const ordersList = [];
-      querySnapshot.forEach((doc) => {
-        ordersList.push({ order_id: doc.id, doc_ref: doc, ...doc.data() });
-      });
-      setMyOrders(ordersList);
+      setMyOrders(await getMyOrders());
     } catch (err) {
       console.error('Error fetching my orders:', err);
     }
-  }, [user?.uid]);
+  }, []);
 
-  // Fetch available orders
   const fetchAvailableOrders = useCallback(async () => {
     try {
-      const q = query(
-        collection(db, 'orders'),
-        where('delivery_id', '==', null),
-        where('status', '==', 'confirmed')
-      );
-      const querySnapshot = await getDocs(q);
-      const ordersList = [];
-      querySnapshot.forEach((doc) => {
-        ordersList.push({ order_id: doc.id, doc_ref: doc, ...doc.data() });
-      });
-      setAvailableOrders(ordersList);
+      setAvailableOrders(await getAvailableOrders());
     } catch (err) {
       console.error('Error fetching available orders:', err);
     }
   }, []);
 
   useEffect(() => {
-    if (user?.uid) {
+    if (!user?.uid) return;
+    fetchMyOrders();
+    fetchAvailableOrders();
+    // Newly confirmed orders appear without a manual refresh
+    const timer = setInterval(() => {
       fetchMyOrders();
       fetchAvailableOrders();
-    }
+    }, 5000);
+    return () => clearInterval(timer);
   }, [user?.uid, fetchMyOrders, fetchAvailableOrders]);
 
-  const acceptOrder = async (order_id, docRef) => {
+  // The second argument is no longer needed. It stays only so the existing buttons keep working.
+  const acceptOrder = async (order_id, _docRef) => {
     try {
-      await updateDoc(docRef, {
-        delivery_id: user?.uid,
-        status: 'out_for_delivery',
-        updated_at: serverTimestamp()
-      });
-      setMessage(' Order accepted!');
+      await apiAcceptOrder(order_id);
+      setMessage('Order accepted!');
       fetchMyOrders();
       fetchAvailableOrders();
       setActiveTab('myorders');
     } catch (err) {
       console.error('Error accepting order:', err);
-      setMessage('Failed to accept order');
+      setMessage(err.message || 'Failed to accept order');
+      fetchAvailableOrders();
     }
     setTimeout(() => setMessage(''), 3000);
   };
 
-  const updateLocation = async (order_id, docRef, status, location) => {
+  const updateLocation = async (order_id, _docRef, status, location) => {
     try {
-      await updateDoc(docRef, {
-        status: status,
-        last_location: location,
-        updated_at: serverTimestamp()
-      });
-      setMessage('✅ Location updated!');
+      await updateOrder(order_id, { status, last_location: location });
+      setMessage('Location updated!');
       fetchMyOrders();
     } catch (err) {
       console.error('Error updating location:', err);
-      setMessage('Failed to update location');
+      setMessage(err.message || 'Failed to update location');
     }
     setTimeout(() => setMessage(''), 3000);
   };
 
-  const sendCustomLocation = async (order_id, docRef) => {
+  const sendCustomLocation = async (order_id, _docRef) => {
     if (!locationInput) return setMessage('Please enter a location!');
     try {
-      await updateDoc(docRef, {
-        last_location: locationInput,
-        updated_at: serverTimestamp()
-      });
-      setMessage(` Location "${locationInput}" sent!`);
+      await updateOrder(order_id, { last_location: locationInput });
+      setMessage(`Location "${locationInput}" sent!`);
       setLocationInput('');
       fetchMyOrders();
     } catch (err) {
-      setMessage('Failed to send location');
+      setMessage(err.message || 'Failed to send location');
     }
     setTimeout(() => setMessage(''), 3000);
   };
-
   return (
     <div className="dashboard">
       <div className="navbar">

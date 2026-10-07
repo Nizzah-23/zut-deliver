@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { auth, db } from '../firebase';
+import { signIn, signOut, fetchAuthSession } from 'aws-amplify/auth';
+import { getMe } from '../api';
 import { useAuth } from '../AuthContext';
 
 const Login = () => {
@@ -14,65 +13,67 @@ const Login = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [message, setMessage] = useState('');
-const handleResetPassword = async () => {
-  if (!email) return setError('Enter your email first!');
+const handleResetPassword = () => {
+  setError('Password reset is not available yet.');
+};
+
+const handleLogin = async () => {
+  setError('');
+  if (!email || !password) {
+    return setError('Email and password are required!');
+  }
+  setLoading(true);
   try {
-    const { sendPasswordResetEmail } = await import('firebase/auth');
-    await sendPasswordResetEmail(auth, email);
-    setError('');
-    setMessage('Password reset email sent! Check your inbox.');
+    try { await signOut(); } catch { /* no active session */ }
+
+    const result = await signIn({
+      username: email.trim().toLowerCase(),
+      password,
+    });
+    if (!result.isSignedIn) {
+      setError(`Extra sign-in step required: ${result.nextStep?.signInStep}`);
+      return;
+    }
+
+    const { tokens } = await fetchAuthSession();
+    const profile = await getMe();
+
+    const routes = {
+      buyer: '/buyer',
+      seller: '/seller',
+      delivery: '/delivery',
+      admin: '/admin',
+    };
+    const target = routes[profile.role];
+    if (!target) {
+      setError(`Unknown role "${profile.role}"`);
+      return;
+    }
+
+    login(
+      {
+        uid: profile.user_id,
+        name: profile.name,
+        email: profile.email,
+        role: profile.role,
+        phone: profile.phone,
+      },
+      tokens.idToken.toString()
+    );
+    navigate(target);
   } catch (err) {
-    setError('Failed to send reset email. Check your email address.');
+    console.error('Login error:', err);
+    const messages = {
+      NotAuthorizedException: 'Invalid email or password!',
+      UserNotFoundException: 'Invalid email or password!',
+      UserNotConfirmedException: 'Account is not confirmed.',
+      NetworkError: 'Network error. Check your connection or VPN.',
+    };
+    setError(messages[err.name] || err.message || 'Login failed');
+  } finally {
+    setLoading(false);
   }
 };
-  const handleLogin = async () => {
-    setError('');
-    if (!email || !password) {
-      return setError('Email and password are required!');
-    }
-    setLoading(true);
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-      const token = await user.getIdToken();
-
-      const userDocRef = doc(db, 'users', user.uid);
-      const userDocSnap = await getDoc(userDocRef);
-
-      if (userDocSnap.exists()) {
-        const userData = userDocSnap.data();
-        const userInfo = {
-          uid: user.uid,
-          name: userData.name,
-          email: user.email,
-          role: userData.role,
-          phone: userData.phone
-        };
-
-        login(userInfo, token);
-
-        if (userData.role === 'buyer') navigate('/buyer');
-        else if (userData.role === 'seller') navigate('/seller');
-        else if (userData.role === 'delivery') navigate('/delivery');
-        else if (userData.role === 'admin') navigate('/admin');
-      } else {
-        setError('User data not found!');
-      }
-    } catch (err) {
-      console.error('Login error:', err);
-      if (err.code === 'auth/user-not-found') {
-        setError('Email not found!');
-      } else if (err.code === 'auth/wrong-password') {
-        setError('Invalid password!');
-      } else if (err.code === 'auth/invalid-credential') {
-        setError('Invalid email or password!');
-      } else {
-        setError(err.message || 'Login failed');
-      }
-    }
-    setLoading(false);
-  };
-
   return (
     <div style={{
       minHeight: '100vh',

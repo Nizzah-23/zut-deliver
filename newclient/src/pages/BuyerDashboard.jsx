@@ -1,8 +1,14 @@
 /* eslint-disable */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../AuthContext';
-import { collection, query, where, getDocs, addDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase';
+import { getProducts, getMyOrders, createOrder } from '../api';
+
+const STATUS_NOTICES = {
+  confirmed: { text: 'has been CONFIRMED by the seller!', type: 'success' },
+  cancelled: { text: 'has been CANCELLED.', type: 'error' },
+  out_for_delivery: { text: 'is OUT FOR DELIVERY!', type: 'success' },
+  delivered: { text: 'has been DELIVERED!', type: 'success' },
+};
 
 function BuyerDashboard() {
   const { user, logout } = useAuth();
@@ -15,77 +21,59 @@ function BuyerDashboard() {
   const [loading, setLoading] = useState(false);
   const [notification, setNotification] = useState(null);
 
+  const prevStatuses = useRef({});
+  const firstLoad = useRef(true);
+
+  const showNotification = (msg, type = 'success') => {
+    setNotification({ msg, type });
+    setTimeout(() => setNotification(null), 6000);
+  };
+
   const fetchProducts = useCallback(async () => {
     try {
-      const q = query(collection(db, 'products'), where('stock', '>', 0));
-      const querySnapshot = await getDocs(q);
-      const productsList = [];
-      querySnapshot.forEach((doc) => {
-        productsList.push({ product_id: doc.id, ...doc.data() });
-      });
-      setProducts(productsList);
+      const data = await getProducts();
+      setProducts(data);
     } catch (err) {
       console.error('Error fetching products:', err);
       setMessage('Failed to load products');
     }
   }, []);
 
-  // REAL-TIME LISTENER for orders
-  useEffect(() => {
-    if (!user?.uid) return;
+  // Replaces the Firestore real-time listener: re-checks orders every 5 seconds
+  const loadOrders = useCallback(async () => {
+    try {
+      const list = await getMyOrders();
 
-    fetchProducts();
-
-    const q = query(collection(db, 'orders'), where('buyer_id', '==', user?.uid));
-
-    // onSnapshot listens for real-time changes
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const ordersList = [];
-      querySnapshot.forEach((doc) => {
-        ordersList.push({ order_id: doc.id, ...doc.data() });
-      });
-
-      // Check for status changes and notify buyer
-      querySnapshot.docChanges().forEach((change) => {
-        if (change.type === 'modified') {
-          const updatedOrder = change.doc.data();
-          const orderId = change.doc.id;
-
-          if (updatedOrder.status === 'confirmed') {
+      if (!firstLoad.current) {
+        list.forEach((order) => {
+          const before = prevStatuses.current[order.order_id];
+          const notice = STATUS_NOTICES[order.status];
+          if (before && before !== order.status && notice) {
             showNotification(
-              `Your order #${orderId.slice(0, 8)}... has been CONFIRMED by the seller!`,
-              'success'
-            );
-          } else if (updatedOrder.status === 'cancelled') {
-            showNotification(
-              `Your order #${orderId.slice(0, 8)}... has been CANCELLED.`,
-              'error'
-            );
-          } else if (updatedOrder.status === 'out_for_delivery') {
-            showNotification(
-              `Your order #${orderId.slice(0, 8)}... is OUT FOR DELIVERY!`,
-              'success'
-            );
-          } else if (updatedOrder.status === 'delivered') {
-            showNotification(
-              `Your order #${orderId.slice(0, 8)}... has been DELIVERED!`,
-              'success'
+              `Your order #${order.order_id.slice(0, 8)}... ${notice.text}`,
+              notice.type
             );
           }
-        }
-      });
+        });
+      }
 
-      setOrders(ordersList);
-    });
+      prevStatuses.current = Object.fromEntries(
+        list.map((o) => [o.order_id, o.status])
+      );
+      firstLoad.current = false;
+      setOrders(list);
+    } catch (err) {
+      console.error('Error loading orders:', err);
+    }
+  }, []);
 
-    // Cleanup listener when component unmounts
-    return () => unsubscribe();
+  useEffect(() => {
+    if (!user?.uid) return;
+    fetchProducts();
+    loadOrders();
+    const timer = setInterval(loadOrders, 5000);
+    return () => clearInterval(timer);
   }, [user?.uid]);
-
-  const showNotification = (msg, type = 'success') => {
-    setNotification({ msg, type });
-    setTimeout(() => setNotification(null), 6000);
-  };
 
   const addToCart = (product) => {
     const existing = cart.find(i => i.product_id === product.product_id);
@@ -114,25 +102,19 @@ function BuyerDashboard() {
     try {
       const seller_id = cart[0].seller_id;
       const items = cart.map(i => ({
-  product_id: i.product_id,
-  name: i.name,
-  quantity: i.quantity,
-  price: i.price
-}));
-      
+        product_id: i.product_id,
+        name: i.name,
+        quantity: i.quantity,
+        price: i.price
+      }));
 
-      await addDoc(collection(db, 'orders'), {
-  buyer_id: user?.uid,
-  buyer_name: user?.name || user?.displayName || 'Unknown',
-  buyer_phone: user?.phone || 'N/A',
-  seller_id: seller_id,
-  items: items,
-  total_amount: parseFloat(getTotal()),
-  delivery_address: deliveryAddress,
-  status: 'pending',
-  created_at: serverTimestamp()
-});
-      
+      await createOrder({
+        seller_id,
+        items,
+        total_amount: parseFloat(getTotal()),
+        delivery_address: deliveryAddress,
+      });
+      await loadOrders();
 
       setMessage('Order placed successfully!');
       setCart([]);
@@ -140,7 +122,7 @@ function BuyerDashboard() {
       setActiveTab('orders');
     } catch (err) {
       console.error('Order error:', err);
-      setMessage('Failed to place order');
+      setMessage(err.message || 'Failed to place order');
     }
     setLoading(false);
   };
@@ -157,7 +139,7 @@ function BuyerDashboard() {
   return (
     <div style={{minHeight: '100vh', background: '#f0fdfa', fontFamily: 'Inter, sans-serif'}}>
 
-      {/* REAL-TIME NOTIFICATION BANNER */}
+      {/* ORDER UPDATE NOTIFICATION BANNER */}
       {notification && (
         <div style={{
           position: 'fixed',
@@ -532,7 +514,7 @@ function BuyerDashboard() {
                       </p>
                       {order.created_at && (
                         <p style={{color: '#0f766e', fontSize: '13px'}}>
-                          Date: {new Date(order.created_at.toDate()).toLocaleDateString()}
+                          Date: {new Date(order.created_at).toLocaleDateString()}
                         </p>
                       )}
                     </div>

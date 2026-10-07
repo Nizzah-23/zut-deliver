@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { setDoc, doc } from 'firebase/firestore';
-import { auth, db } from '../firebase';
+import { registerUser } from '../api';
 
 const Register = () => {
   const [form, setForm] = useState({
@@ -56,35 +54,22 @@ const Register = () => {
     if (passwordStrength.strength < 60) {
       return setError('Password is too weak!');
     }
-
-    setLoading(true);
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, form.email, form.password);
-      const user = userCredential.user;
-
-      await updateProfile(user, { displayName: form.name });
-
-      await setDoc(doc(db, 'users', user.uid), {
-        name: form.name,
-        email: form.email,
-        role: form.role,
-        phone: form.phone,
-        created_at: new Date()
-      });
-
-      console.log('Registration successful!');
-      navigate('/login');
-    } catch (err) {
-      console.error('Registration error:', err);
-      if (err.code === 'auth/email-already-in-use') {
-        setError('Email already exists!');
-      } else if (err.code === 'auth/weak-password') {
-        setError('Password is too weak!');
-      } else {
-        setError(err.message || 'Registration failed');
-      }
-    }
-    setLoading(false);
+setLoading(true);
+try {
+  await registerUser({
+    name: form.name.trim(),
+    email: form.email.trim(),
+    password: form.password,
+    role: form.role,
+    phone: form.phone,
+  });
+  navigate('/login');
+} catch (err) {
+  console.error('Registration error:', err);
+  setError(err.message || 'Registration failed');
+}
+setLoading(false);
+    
   };
 
   return (
